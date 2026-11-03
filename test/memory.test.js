@@ -101,3 +101,18 @@ test('Scheduler updates automatically after source changes without holding up th
   await until(async () => (await runtime.memory.read()).text === '后台自动生成的摘要', 3000);
   assert.equal(calls, 1);
 });
+
+test('Summary model route is durable, rejects unknown providers and can return to following the chat', async t => {
+  const { runtime, config, source } = await setup(t);
+  runtime.memory.setGenerator({ ...generator(async () => '摘要'), hasProvider: p => p === 'configured' });
+  await assert.rejects(runtime.memory.save({ text: '保留', autoUpdate: false, expectedRevision: 0,
+    modelSelection: { provider: 'missing', model: 'chat' } }), { code: 'NO_SUMMARY_MODEL' });
+  await runtime.memory.save({ text: '保留', autoUpdate: false, expectedRevision: 0,
+    modelSelection: { provider: 'configured', model: 'chat' } });
+  await runtime.close();
+  const reopened = track(t, new HistoryRag(config, source)); await reopened.start();
+  assert.deepEqual((await reopened.memory.read()).modelSelection, { provider: 'configured', model: 'chat' });
+  const saved = await reopened.memory.save({ text: '保留', autoUpdate: false, expectedRevision: 1 });
+  assert.deepEqual(saved.modelSelection, { provider: 'configured', model: 'chat' });
+  assert.equal((await reopened.memory.save({ text: '保留', autoUpdate: false, expectedRevision: 2, modelSelection: null })).modelSelection, null);
+});

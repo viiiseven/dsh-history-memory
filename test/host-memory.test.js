@@ -19,6 +19,7 @@ test('Installed DSH LLM and Connection generate, edit and inject a durable summa
   ctx.provide('agents', {}); ctx.provide('agentDefaultModel', { currentSelection: () => ({ provider: 'synthetic', model: 'native-summary' }) });
   const calls = [];
   class Adapter extends LlmAdapter {
+    async listModels(provider) { return [{ provider, id: 'native-summary', name: '默认摘要模型' }, { provider, id: 'picked-summary', name: '指定摘要模型' }]; }
     async *stream(options) {
       calls.push(options);
       yield { type: 'reasoning-delta', index: 0, text: '此内容不得进入摘要' };
@@ -45,10 +46,21 @@ test('Installed DSH LLM and Connection generate, edit and inject a durable summa
   await rpc('memory-update');
   await until(async () => (await rpc('memory')).value?.text === '用户偏好中文。');
   assert.equal(calls[0].model, 'native-summary'); assert.equal(calls[0].purpose, 'history-rag-summary');
+  const models = (await rpc('memory-models')).value;
+  assert.equal(models.providers[0].id, 'synthetic');
+  assert.ok(models.providers[0].models.some(m => m.id === 'picked-summary'));
+  assert.equal((await rpc('memory-models', {}, { principal: { kind: 'guest' } })).status, 403);
+  const route = { provider: 'synthetic', model: 'chat-window-model' };
+  const resolved = await ctx.waterfall('agent/request', {}, async () => route);
+  assert.equal(resolved, route);
+  assert.equal((await rpc('status')).value.memory.model, 'chat-window-model');
   assert.deepEqual(calls[0].tools, []); assert.ok(!calls[0].messages.some(m => m.content[0].text.includes('此内容不得进入摘要')));
   const before = (await rpc('memory')).value;
-  const saved = await rpc('memory-save', { text: '手动修订：偏好简洁中文', autoUpdate: false, expectedRevision: before.revision });
+  const saved = await rpc('memory-save', { text: '手动修订：偏好简洁中文', autoUpdate: false, expectedRevision: before.revision,
+    modelSelection: { provider: 'synthetic', model: 'picked-summary' } });
   assert.equal(saved.ok, true);
+  assert.equal((await rpc('status')).value.memory.model, 'picked-summary');
+  assert.deepEqual((await db.call('readMemory')).modelSelection, { provider: 'synthetic', model: 'picked-summary' });
   assert.equal((await rpc('memory-save', { text: '旧窗口', autoUpdate: true, expectedRevision: before.revision })).error.code, 'MEMORY_CONFLICT');
   assert.equal((await rpc('memory', {}, { principal: { kind: 'guest' } })).status, 403);
   const chat = ctx.sessions.create('summary-new-chat', { meta: { cwd: process.cwd() } });
@@ -66,4 +78,19 @@ test('Native summary parser rejects incomplete model output and excludes reasoni
     yield { type: 'text-delta', index: 0, text: '不完整正文' }; yield { type: 'finish', reason: { kind: 'max-tokens' } };
   } } };
   await assert.rejects(hostSummarizer(ctx, runtime).generate({ previous: {}, chunks: [], maxChars: 100, signal: new AbortController().signal }), { code: 'SUMMARY_TRUNCATED' });
+});
+
+test('Native summary calls prefer a saved model, then actual chat routing, then the DSH default', async () => {
+  const runtime = { config: { memoryMaxTokens: 1000 }, memory: { record: {} } };
+  const calls = [];
+  const ctx = { get: () => ({ currentSelection: () => ({ provider: 'default', model: 'default-chat' }) }), llm: { async *stream(options) {
+    calls.push(options); yield { type: 'text-delta', index: 0, text: '摘要' }; yield { type: 'finish', reason: { kind: 'stop' } };
+  } } };
+  const summary = hostSummarizer(ctx, runtime);
+  const run = () => summary.generate({ previous: {}, chunks: [], maxChars: 100, signal: new AbortController().signal });
+  await run();
+  runtime.memory.lastTarget = { provider: 'chat', model: 'window-chat' }; await run();
+  runtime.memory.record.modelSelection = { provider: 'configured', model: 'explicit-chat' }; await run();
+  assert.deepEqual(calls.map(c => [c.provider, c.model]), [['default', 'default-chat'], ['chat', 'window-chat'], ['configured', 'explicit-chat']]);
+  assert.ok(calls.every(c => !('apiKey' in c) && !('baseURL' in c)));
 });

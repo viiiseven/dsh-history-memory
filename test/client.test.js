@@ -16,7 +16,7 @@ async function setup(t, override) {
   const { Simulate } = require('react-dom/test-utils');
   const dom = new JSDOM('<!doctype html><html><head></head><body><div id="root"></div></body></html>', { url: 'http://localhost/', runScripts: 'outside-only' });
   globalThis.window = dom.window; globalThis.document = dom.window.document; globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-  const state = { embeddingEndpoint: 'https://example.com/v1/embeddings', embeddingModel: 'test-model', key: { configured: true, source: 'file' }, locks: {}, revision: 'rev-1' };
+  const state = { apiVersion: 2, embeddingEndpoint: 'https://example.com/v1/embeddings', embeddingModel: 'test-model', key: { configured: true, source: 'file' }, locks: {}, revision: 'rev-1' };
   const memory = { text: '偏好中文，正在开发项目 A。', revision: 1, autoUpdate: true, updatedAt: 1, source: 'automatic' };
   let status = { configured: true, indexing: true, chunks: 80, embeddedChunks: 40, pending: 40, progress: { phase: 'indexing', total: 20, completed: 10 }, state: {} };
   const calls = [], dispose = [];
@@ -31,7 +31,8 @@ async function setup(t, override) {
       if (override) { const result = await override(action, payload); if (result) return result; }
       if (action === 'settings') return { ok: true, value: structuredClone(state) };
       if (action === 'memory') return { ok: true, value: structuredClone(memory) };
-      if (action === 'memory-save') { Object.assign(memory, { text: payload.text, autoUpdate: payload.autoUpdate, revision: memory.revision + 1 }); return { ok: true, value: structuredClone(memory) }; }
+      if (action === 'memory-models') return { ok: true, value: { providers: [{ id: 'local', name: '本机服务', models: [{ id: 'chat-a', name: '聊天 A' }] }] } };
+      if (action === 'memory-save') { Object.assign(memory, { text: payload.text, autoUpdate: payload.autoUpdate, modelSelection: payload.modelSelection, revision: memory.revision + 1 }); return { ok: true, value: structuredClone(memory) }; }
       if (action === 'status') return { ok: true, value: structuredClone(status) };
       if (action === 'save') { Object.assign(state, { embeddingEndpoint: payload.embeddingEndpoint, embeddingModel: payload.embeddingModel, revision: 'rev-2' }); return { ok: true, value: structuredClone(state) }; }
       return { ok: true, value: { dimensions: 1024, elapsedMs: 12 } };
@@ -118,7 +119,7 @@ test('Summary editor saves text with its revision and preserves a rejected draft
     ? { ok: false, error: { message: '摘要已在后台更新，请合并保存' } } : null);
   await input('hr-memory', '手动更新后的记忆'); await click('保存摘要');
   const saved = calls.find(c => c.action === 'memory-save').payload;
-  assert.deepEqual(structuredClone(saved), { text: '手动更新后的记忆', autoUpdate: true, expectedRevision: 1 });
+  assert.deepEqual(structuredClone(saved), { text: '手动更新后的记忆', autoUpdate: true, expectedRevision: 1, modelSelection: null });
   await input('hr-memory', '冲突草稿'); await click('保存摘要');
   assert.equal(dom.window.document.getElementById('hr-memory').value, '冲突草稿');
   assert.ok(dom.window.document.body.textContent.includes('合并保存'));
@@ -150,4 +151,29 @@ test('Update panel reports available GitHub updates, uses a safe repository link
   assert.equal(link.href, 'https://github.com/viiiseven/dsh-history-memory');
   assert.equal(dom.window.document.getElementById('hr-memory').value, '未保存的摘要草稿');
   assert.equal(dom.window.document.getElementById('hr-model').value, '未保存的向量模型');
+});
+
+test('Summary model selection uses DSH catalog and saves the selected route without changing Embedding credentials', { skip: !modules }, async t => {
+  const { dom, input, click, calls } = await setup(t);
+  assert.equal(dom.window.document.getElementById('hr-memory-model').value, '');
+  await input('hr-memory-model', JSON.stringify(['local', 'chat-a']));
+  await click('保存摘要');
+  const saved = calls.find(c => c.action === 'memory-save').payload;
+  assert.deepEqual(structuredClone(saved.modelSelection), { provider: 'local', model: 'chat-a' });
+  assert.ok(!calls.some(c => c.action === 'save'));
+  await click('重新加载摘要');
+  assert.equal(dom.window.document.getElementById('hr-memory-model').value, JSON.stringify(['local', 'chat-a']));
+});
+
+test('Updated frontend detects an older backend before calling missing summary routes', { skip: !modules }, async t => {
+  const { dom, calls } = await setup(t, action => action === 'settings' ? { ok: true, value: { embeddingEndpoint: '', embeddingModel: '', key: {}, locks: {}, revision: 'old' } } : null);
+  assert.ok(dom.window.document.body.textContent.includes('插件后台仍是旧版'));
+  assert.ok(!calls.some(c => c.action === 'memory' || c.action === 'memory-models'));
+  assert.equal(dom.window.document.getElementById('hr-memory').disabled, true);
+});
+
+test('Missing summary transport route shows a restart instruction instead of the raw HTTP failure', { skip: !modules }, async t => {
+  const { dom } = await setup(t, action => { if (action === 'memory') throw new Error('transport failure for /api/history-rag/memory: HTTP 404'); });
+  assert.ok(dom.window.document.body.textContent.includes('完全退出 DSH 后重新打开'));
+  assert.ok(!dom.window.document.body.textContent.includes('transport failure'));
 });

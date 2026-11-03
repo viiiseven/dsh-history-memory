@@ -17,6 +17,11 @@ export async function apply(ctx, input = {}) {
   } });
   ctx.effect(() => () => runtime.close());
   ctx.on('agent/pre-step', preStep(runtime), { prepend: true });
+  ctx.on('agent/request', async (_payload, next) => {
+    const resolved = await next();
+    runtime.memory.observeTarget(resolved);
+    return resolved;
+  }, { prepend: true });
   ctx.on('session/event', (session, event) => {
     if (eventText(event, config)) runtime.markDirty(session.id);
   });

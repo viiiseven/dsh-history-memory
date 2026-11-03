@@ -6,17 +6,18 @@ window.__ModuleLoader__.load({
     const h = React.createElement;
     const { useState, useEffect, useRef } = React;
     const css = `
-.hrag{max-width:780px;color:var(--dsw-alias-label-primary,#242628);font-family:inherit;line-height:1.55;padding:4px 0 24px;--hr-muted:var(--dsw-alias-label-secondary,#777c86);--hr-line:var(--dsw-alias-border-main,rgba(128,138,158,.22));--hr-bg:var(--dsw-alias-surface-container,rgba(128,138,158,.055));--hr-accent:#3478ed}
+.hrag{max-width:780px;color:var(--dsw-alias-label-primary,#242628);font-family:inherit;line-height:1.55;padding:4px 0 24px;color-scheme:light;--hr-muted:var(--dsw-alias-label-secondary,#777c86);--hr-line:var(--dsw-alias-border-l2,rgba(128,138,158,.25));--hr-bg:var(--dsw-alias-bg-layer-2,#f4f5f7);--hr-input:var(--dsw-alias-bg-layer-1,#fff);--hr-error:#b34a45;--hr-accent:#3478ed}
+body[data-ds-dark-theme] .hrag{color-scheme:dark;color:var(--dsw-alias-label-primary,#e8eaed);--hr-muted:var(--dsw-alias-label-secondary,#a0a5af);--hr-bg:var(--dsw-alias-bg-layer-2,#303238);--hr-input:var(--dsw-alias-bg-layer-1,#25272c);--hr-error:#f0928b}
 .hrag *{box-sizing:border-box}.hrag h2{font-size:21px;letter-spacing:-.4px;margin:0;font-weight:650}.hrag p{margin:5px 0 0}.hrag .hr-muted{color:var(--hr-muted);font-size:13px}.hrag .hr-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:22px}.hrag .hr-pill{font-size:12px;color:var(--hr-muted);background:var(--hr-bg);border:1px solid var(--hr-line);padding:4px 10px;border-radius:20px;white-space:nowrap}
-.hrag .hr-card{border:1px solid var(--hr-line);border-radius:13px;padding:22px;margin-top:18px;background:transparent}.hrag h3{margin:0 0 18px;font-size:15px;font-weight:650}.hrag label.hr-field{display:block;font-size:13px;font-weight:550;margin-top:17px}.hrag label.hr-field:first-of-type{margin-top:0}.hrag input[type=url],.hrag input[type=text],.hrag input[type=password]{display:block;width:100%;border:1px solid var(--hr-line);border-radius:8px;padding:10px 12px;background:var(--dsw-alias-surface-container,#fff);color:inherit;font:inherit;font-size:14px;outline:none;margin-top:7px;transition:border-color .15s,box-shadow .15s}
+.hrag .hr-card{border:1px solid var(--hr-line);border-radius:13px;padding:22px;margin-top:18px;background:transparent}.hrag h3{margin:0 0 18px;font-size:15px;font-weight:650}.hrag label.hr-field{display:block;font-size:13px;font-weight:550;margin-top:17px}.hrag label.hr-field:first-of-type{margin-top:0}.hrag input[type=url],.hrag input[type=text],.hrag input[type=password]{display:block;width:100%;border:1px solid var(--hr-line);border-radius:8px;padding:10px 12px;background:var(--hr-input);color:inherit;font:inherit;font-size:14px;outline:none;margin-top:7px;transition:border-color .15s,box-shadow .15s}
 .hrag input:focus{border-color:var(--hr-accent);box-shadow:0 0 0 3px rgba(52,120,237,.12)}.hrag input:disabled{opacity:.6}.hrag .hr-key{position:relative}.hrag .hr-key input{padding-right:60px}.hrag .hr-key button{position:absolute;right:6px;top:6px;border:0;background:none;color:var(--hr-muted);padding:6px;font-size:12px}.hrag .hr-note{font-size:12px;color:var(--hr-muted);margin-top:5px}.hrag .hr-check{display:flex;align-items:center;gap:7px;font-size:12px;margin-top:9px;color:var(--hr-muted)}.hrag input[type=checkbox]{accent-color:var(--hr-accent)}
 .hrag button{cursor:pointer;font:inherit;font-size:13px;border:1px solid var(--hr-line);border-radius:8px;padding:9px 14px;color:inherit;background:transparent}.hrag button:hover:enabled{background:var(--hr-bg)}.hrag button:disabled{opacity:.48;cursor:default}.hrag button.hr-primary{background:var(--hr-accent);border-color:var(--hr-accent);color:#fff}.hrag button.hr-primary:hover:enabled{background:#2468da}.hrag .hr-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:22px}.hrag .hr-feedback{padding:9px 11px;border-radius:7px;margin-top:13px;font-size:13px;white-space:pre-wrap;background:rgba(52,120,237,.07)}.hrag .hr-feedback[data-error=true]{color:#b34a45;background:rgba(190,69,59,.08)}
-.hrag .hr-models{display:flex;align-items:center;gap:9px;margin-top:9px;flex-wrap:wrap}.hrag .hr-models select{flex:1;min-width:180px;max-width:100%;border:1px solid var(--hr-line);border-radius:8px;padding:9px;color:inherit;background:var(--dsw-alias-surface-container,#fff);font:inherit;font-size:13px}.hrag .hr-models button{white-space:nowrap}.hrag .hr-feedback{overflow-wrap:anywhere}
-.hrag textarea{display:block;width:100%;min-height:190px;max-height:560px;resize:vertical;padding:12px;border:1px solid var(--hr-line);border-radius:8px;background:var(--dsw-alias-surface-container,#fff);color:inherit;font:inherit;font-size:14px;line-height:1.7;margin-top:8px}.hrag textarea:focus{outline:2px solid rgba(52,120,237,.25)}.hrag .hr-memory-meta{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:8px;color:var(--hr-muted);font-size:12px}
+.hrag .hr-models{display:flex;align-items:center;gap:9px;margin-top:9px;flex-wrap:wrap}.hrag .hr-models select{flex:1;min-width:180px;max-width:100%;border:1px solid var(--hr-line);border-radius:8px;padding:9px;color:inherit;background:var(--hr-input);font:inherit;font-size:13px}.hrag .hr-models button{white-space:nowrap}.hrag .hr-feedback{overflow-wrap:anywhere}
+.hrag textarea{display:block;width:100%;min-height:190px;max-height:560px;resize:vertical;padding:12px;border:1px solid var(--hr-line);border-radius:8px;background:var(--hr-input);color:inherit;font:inherit;font-size:14px;line-height:1.7;margin-top:8px}.hrag textarea:focus{outline:2px solid rgba(52,120,237,.25)}.hrag .hr-memory-meta{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:8px;color:var(--hr-muted);font-size:12px}
 .hrag a{color:var(--hr-accent);text-decoration:none}.hrag a:hover{text-decoration:underline}.hrag .hr-update-version{font-size:12px;color:var(--hr-muted);white-space:nowrap}.hrag .hr-update-line{margin-top:12px;font-size:14px}.hrag .hr-update-line[data-available=true]{color:var(--hr-accent);font-weight:600}
 .hrag .hr-section-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:16px}.hrag .hr-section-head h3{margin:0}.hrag .hr-section-head button{padding:6px 10px;font-size:12px}.hrag .hr-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:17px 0 22px}.hrag .hr-stat{padding:13px;border-radius:9px;background:var(--hr-bg)}.hrag .hr-stat strong{font-size:24px;font-weight:600;display:block;letter-spacing:-.5px;line-height:1.3}.hrag .hr-stat span{color:var(--hr-muted);font-size:12px}.hrag .hr-progress-label{display:flex;justify-content:space-between;gap:12px;font-size:13px;margin:15px 0 6px}.hrag progress{display:block;width:100%;height:7px;border:0;overflow:hidden;border-radius:10px;accent-color:var(--hr-accent);background:var(--hr-bg)}.hrag progress::-webkit-progress-bar{background:var(--hr-bg);border-radius:10px}.hrag progress::-webkit-progress-value{background:var(--hr-accent);border-radius:10px}.hrag .hr-state{font-size:13px;display:flex;gap:8px;align-items:center}.hrag .hr-dot{width:7px;height:7px;border-radius:100%;background:var(--hr-accent);flex-shrink:0}.hrag details{font-size:12px;color:var(--hr-muted);margin-top:14px}.hrag summary{cursor:pointer}.hrag code{word-break:break-all;font-size:11px}.hrag .hr-footer{margin-top:15px;color:var(--hr-muted);font-size:12px}.hrag .hr-error{color:#b34a45}
 @media(max-width:560px){.hrag .hr-card{padding:16px}.hrag .hr-stats{gap:6px}.hrag .hr-stat{padding:10px}.hrag .hr-stat strong{font-size:21px}.hrag .hr-head{align-items:flex-start}.hrag h2{font-size:19px}.hrag .hr-actions button{flex:1}}
-@media(prefers-color-scheme:dark){.hrag{color:var(--dsw-alias-label-primary,#e8eaed)}.hrag input[type=url],.hrag input[type=text],.hrag input[type=password]{background:var(--dsw-alias-surface-container,#25272c)}.hrag .hr-error,.hrag .hr-feedback[data-error=true]{color:#f0928b}}
+.hrag input[type=url],.hrag input[type=text],.hrag input[type=password],.hrag textarea,.hrag select,.hrag option,.hrag optgroup{background:var(--hr-input);color:inherit}.hrag input::placeholder,.hrag textarea::placeholder{color:var(--hr-muted);opacity:.85}.hrag .hr-error,.hrag .hr-feedback[data-error=true]{color:var(--hr-error)}
 `;
     const number = value => Number(value || 0).toLocaleString('zh-CN');
     const errors = { HTTP_401: 'Embedding 鉴权失败，请检查 Key', HTTP_403: 'Embedding 接口拒绝访问', HTTP_429: 'Embedding 接口限流或额度不足', NETWORK_ERROR: '无法连接 Embedding 服务', ABORTED: 'Embedding 请求已取消或超时', DIMENSION_MISMATCH: '向量维度不一致', KEY_FILE_ERROR: '无法读取本地 Key 文件' };
@@ -36,6 +37,9 @@ window.__ModuleLoader__.load({
       const [memory, setMemory] = useState(null);
       const [memoryText, setMemoryText] = useState('');
       const [memoryAuto, setMemoryAuto] = useState(true);
+      const [memoryModel, setMemoryModel] = useState('');
+      const [memoryModels, setMemoryModels] = useState([]);
+      const [memoryModelsBusy, setMemoryModelsBusy] = useState(false);
       const [memoryDirty, setMemoryDirty] = useState(false);
       const [memoryBusy, setMemoryBusy] = useState('');
       const [memoryFeedback, setMemoryFeedback] = useState(null);
@@ -43,6 +47,7 @@ window.__ModuleLoader__.load({
       const [updateFeedback, setUpdateFeedback] = useState('');
       const memoryDirtyRef = useRef(false);
       const memoryRevisionRef = useRef(null);
+      const backendReady = useRef(false);
       const mounted = useRef(true);
       const requests = useRef(new Set());
       const invoke = async (action, payload = {}) => {
@@ -56,29 +61,42 @@ window.__ModuleLoader__.load({
         setKey(''); setClearKey(false); setShowKey(false); setModels(null);
       };
       const load = async () => {
-        try { const value = await invoke('settings'); if (mounted.current) { accept(value); setFeedback(null); } }
+        try { const value = await invoke('settings'); if (mounted.current) {
+          accept(value); setFeedback(null); backendReady.current = value.apiVersion >= 2;
+          if (!backendReady.current) setMemoryFeedback({ error: true, text: '设置页已更新，但插件后台仍是旧版。请从「应用 → 退出」完全退出 DSH 后重新打开，再加载摘要。' });
+          else if (memoryRevisionRef.current === null) { loadMemory(); loadMemoryModels(); }
+        } }
         catch (error) { if (mounted.current) setFeedback({ error: true, text: error.message || '设置加载失败，请重试' }); }
       };
       const acceptMemory = value => {
         setMemory(value); setMemoryText(value.text); setMemoryAuto(value.autoUpdate);
+        setMemoryModel(value.modelSelection ? JSON.stringify([value.modelSelection.provider, value.modelSelection.model]) : '');
         memoryRevisionRef.current = value.revision; memoryDirtyRef.current = false; setMemoryDirty(false);
       };
       const loadMemory = async () => {
+        if (!backendReady.current) { await load(); return; }
         setMemoryBusy('load');
         try { const value = await invoke('memory'); if (mounted.current) { acceptMemory(value); setMemoryFeedback(null); } }
         catch (error) { if (mounted.current) setMemoryFeedback({ error: true, text: error.message || '摘要加载失败' }); }
         finally { if (mounted.current) setMemoryBusy(''); }
       };
+      const loadMemoryModels = async () => {
+        if (!backendReady.current) return;
+        setMemoryModelsBusy(true);
+        try { const value = await invoke('memory-models'); if (mounted.current) setMemoryModels(value.providers); }
+        catch (error) { if (mounted.current) setMemoryFeedback({ error: true, text: error.message || 'DSH 模型列表加载失败，请重试' }); }
+        finally { if (mounted.current) setMemoryModelsBusy(false); }
+      };
       useEffect(() => {
         mounted.current = true;
-        load(); loadMemory();
+        load();
         let timer;
         const poll = async () => {
           try {
             const value = await invoke('status');
             if (mounted.current) {
               setStatus(value); setPollError(false);
-              if (value.memory && value.memory.revision !== memoryRevisionRef.current && !memoryDirtyRef.current) {
+              if (backendReady.current && value.memory && value.memory.revision !== memoryRevisionRef.current && !memoryDirtyRef.current) {
                 const fresh = await invoke('memory');
                 if (mounted.current && !memoryDirtyRef.current && fresh.revision >= (memoryRevisionRef.current ?? -1)) acceptMemory(fresh);
               }
@@ -115,7 +133,9 @@ window.__ModuleLoader__.load({
         if (!memory || memoryBusy) return;
         setMemoryBusy(action); setMemoryFeedback(null);
         try {
-          const result = await invoke(action, action === 'memory-save' ? { text: memoryText, autoUpdate: memoryAuto, expectedRevision: memory.revision } : {});
+          const selected = memoryModel ? JSON.parse(memoryModel) : null;
+          const result = await invoke(action, action === 'memory-save' ? { text: memoryText, autoUpdate: memoryAuto, expectedRevision: memory.revision,
+            modelSelection: selected ? { provider: selected[0], model: selected[1] } : null } : {});
           if (!mounted.current) return;
           if (action === 'memory-save') acceptMemory(result);
           const currentStatus = await invoke('status');
@@ -203,6 +223,15 @@ window.__ModuleLoader__.load({
         h('form', { className: 'hr-card', 'aria-label': '常驻记忆摘要设置', onSubmit: e => { e.preventDefault(); performMemory('memory-save'); } },
           h('h3', null, '常驻记忆摘要'),
           h('p', { className: 'hr-note' }, '一份跨会话共享的摘要。新会话首次发送时自动带入；同会话不重复，压缩移出后会补回。'),
+          h('label', { className: 'hr-field', htmlFor: 'hr-memory-model' }, '摘要生成模型'),
+          h('div', { className: 'hr-models' },
+            h('select', { id: 'hr-memory-model', value: memoryModel, disabled: !memory || Boolean(memoryBusy), onChange: e => { setMemoryModel(e.target.value); editMemory(); } },
+              h('option', { value: '' }, '跟随对话模型（默认）'),
+              memoryModel && !memoryModels.some(p => p.models.some(m => JSON.stringify([p.id, m.id]) === memoryModel))
+                ? h('option', { value: memoryModel }, `已保存：${JSON.parse(memoryModel).join(' / ')}`) : null,
+              ...memoryModels.map(p => h('optgroup', { key: p.id, label: p.name }, ...p.models.map(m => h('option', { key: m.id, value: JSON.stringify([p.id, m.id]) }, m.name))))),
+            h('button', { type: 'button', disabled: !memory || memoryModelsBusy, onClick: loadMemoryModels }, memoryModelsBusy ? '正在读取…' : '刷新 DSH 模型')),
+          h('p', { className: 'hr-note' }, '默认使用最近对话实际选用的模型；尚未聊天时使用 DSH 默认模型。指定模型同样沿用本机 .dsh 的接口和 Key，选择后请保存摘要。'),
           h('label', { className: 'hr-field', htmlFor: 'hr-memory' }, '摘要内容',
             h('textarea', { id: 'hr-memory', value: memoryText, maxLength: memoryState?.maxChars || 6000,
               placeholder: '用户背景、偏好、当前进展、约定和待办…', disabled: !memory || Boolean(memoryBusy),
@@ -219,7 +248,7 @@ window.__ModuleLoader__.load({
             h('button', { type: 'button', disabled: !memory || Boolean(memoryBusy) || Boolean(memoryState?.running) || !memoryState?.modelReady || memoryDirty, onClick: () => performMemory('memory-update') }, '立即更新摘要'),
             h('button', { type: 'button', disabled: Boolean(memoryBusy), onClick: loadMemory }, '重新加载摘要')),
           memoryFeedback ? h('div', { className: 'hr-feedback', 'data-error': memoryFeedback.error, role: memoryFeedback.error ? 'alert' : 'status' }, memoryFeedback.text) : null,
-          h('p', { className: 'hr-footer' }, '自动更新复用 DSH 默认聊天模型，会产生该模型用量；仅处理新增原文，原文 RAG 继续独立工作。')),
+          h('p', { className: 'hr-footer' }, '自动更新通过 DSH 调用所选聊天模型，会产生该模型用量；仅处理新增原文，原文 RAG 继续独立工作。')),
         h('form', { className: 'hr-card', 'aria-label': 'Embedding 服务设置', onSubmit: e => { e.preventDefault(); perform('save'); } },
           h('h3', null, 'Embedding 服务'),
           field('接口地址', 'hr-endpoint', endpoint, value => { setEndpoint(value); setModels(null); setFeedback(null); }, 'https://example.com/v1', !settings || Boolean(locks.embeddingEndpoint) || Boolean(busy),
@@ -268,7 +297,12 @@ window.__ModuleLoader__.load({
         return () => style.remove();
       });
       const call = async (action, payload, signal) => {
-        const result = await ctx.connection.rpc.call('/api', `history-rag/${action}`, payload, signal);
+        let result;
+        try { result = await ctx.connection.rpc.call('/api', `history-rag/${action}`, payload, signal); }
+        catch (error) {
+          if (/HTTP 404\b/.test(error.message || '')) throw new Error('插件后台接口尚未就绪或仍为旧版。请从「应用 → 退出」完全退出 DSH 后重新打开，再重新加载设置。');
+          throw error;
+        }
         if (!result.ok) throw new Error(result.error.message);
         return result.value;
       };
