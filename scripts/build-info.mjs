@@ -8,4 +8,3 @@ try {
   dirty = Boolean(execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8', windowsHide: true }).trim());
 } catch { /* Source archive builds still support version checking without Git metadata. */ }
 await writeFile(new URL('../build-info.json', import.meta.url), `${JSON.stringify({ commit, dirty }, null, 2)}\n`);
-console.log(`Build identity: ${commit?.slice(0, 7) || 'version only'}${dirty ? ' (local changes)' : ''}`);
