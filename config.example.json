@@ -1,0 +1,23 @@
+{
+  "embeddingEndpoint": "",
+  "embeddingModel": "",
+  "apiKeyEnv": "HISTORY_RAG_API_KEY",
+  "apiKeyFile": "",
+  "dimensions": 0,
+  "queryPrefix": "",
+  "documentPrefix": "",
+  "scope": "all",
+  "chunkChars": 800,
+  "chunkOverlap": 120,
+  "batchSize": 10,
+  "scanIntervalMs": 60000,
+  "embeddingTimeoutMs": 30000,
+  "recallTimeoutMs": 3000,
+  "topK": 3,
+  "minScore": 0.35,
+  "maxContextChars": 6000,
+  "humanSourceKinds": ["user", "prompt"],
+  "includeToolResults": false,
+  "excludeSessionIds": [],
+  "excludeWorkspaces": []
+}

@@ -1,0 +1,10 @@
+node_modules/
+*.tgz
+*.sqlite*
+.test-data/
+config.local.json
+config.json
+*.key
+.env
+.env.*
+!.env.example

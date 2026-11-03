@@ -1,0 +1,4 @@
+- insert:
+    - id: history-rag
+      name: dsh-history-rag
+      config: {}
