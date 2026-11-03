@@ -12,6 +12,7 @@ window.__ModuleLoader__.load({
 .hrag input:focus{border-color:var(--hr-accent);box-shadow:0 0 0 3px rgba(52,120,237,.12)}.hrag input:disabled{opacity:.6}.hrag .hr-key{position:relative}.hrag .hr-key input{padding-right:60px}.hrag .hr-key button{position:absolute;right:6px;top:6px;border:0;background:none;color:var(--hr-muted);padding:6px;font-size:12px}.hrag .hr-note{font-size:12px;color:var(--hr-muted);margin-top:5px}.hrag .hr-check{display:flex;align-items:center;gap:7px;font-size:12px;margin-top:9px;color:var(--hr-muted)}.hrag input[type=checkbox]{accent-color:var(--hr-accent)}
 .hrag button{cursor:pointer;font:inherit;font-size:13px;border:1px solid var(--hr-line);border-radius:8px;padding:9px 14px;color:inherit;background:transparent}.hrag button:hover:enabled{background:var(--hr-bg)}.hrag button:disabled{opacity:.48;cursor:default}.hrag button.hr-primary{background:var(--hr-accent);border-color:var(--hr-accent);color:#fff}.hrag button.hr-primary:hover:enabled{background:#2468da}.hrag .hr-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:22px}.hrag .hr-feedback{padding:9px 11px;border-radius:7px;margin-top:13px;font-size:13px;white-space:pre-wrap;background:rgba(52,120,237,.07)}.hrag .hr-feedback[data-error=true]{color:#b34a45;background:rgba(190,69,59,.08)}
 .hrag .hr-models{display:flex;align-items:center;gap:9px;margin-top:9px;flex-wrap:wrap}.hrag .hr-models select{flex:1;min-width:180px;max-width:100%;border:1px solid var(--hr-line);border-radius:8px;padding:9px;color:inherit;background:var(--dsw-alias-surface-container,#fff);font:inherit;font-size:13px}.hrag .hr-models button{white-space:nowrap}.hrag .hr-feedback{overflow-wrap:anywhere}
+.hrag textarea{display:block;width:100%;min-height:190px;max-height:560px;resize:vertical;padding:12px;border:1px solid var(--hr-line);border-radius:8px;background:var(--dsw-alias-surface-container,#fff);color:inherit;font:inherit;font-size:14px;line-height:1.7;margin-top:8px}.hrag textarea:focus{outline:2px solid rgba(52,120,237,.25)}.hrag .hr-memory-meta{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:8px;color:var(--hr-muted);font-size:12px}
 .hrag .hr-section-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:16px}.hrag .hr-section-head h3{margin:0}.hrag .hr-section-head button{padding:6px 10px;font-size:12px}.hrag .hr-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:17px 0 22px}.hrag .hr-stat{padding:13px;border-radius:9px;background:var(--hr-bg)}.hrag .hr-stat strong{font-size:24px;font-weight:600;display:block;letter-spacing:-.5px;line-height:1.3}.hrag .hr-stat span{color:var(--hr-muted);font-size:12px}.hrag .hr-progress-label{display:flex;justify-content:space-between;gap:12px;font-size:13px;margin:15px 0 6px}.hrag progress{display:block;width:100%;height:7px;border:0;overflow:hidden;border-radius:10px;accent-color:var(--hr-accent);background:var(--hr-bg)}.hrag progress::-webkit-progress-bar{background:var(--hr-bg);border-radius:10px}.hrag progress::-webkit-progress-value{background:var(--hr-accent);border-radius:10px}.hrag .hr-state{font-size:13px;display:flex;gap:8px;align-items:center}.hrag .hr-dot{width:7px;height:7px;border-radius:100%;background:var(--hr-accent);flex-shrink:0}.hrag details{font-size:12px;color:var(--hr-muted);margin-top:14px}.hrag summary{cursor:pointer}.hrag code{word-break:break-all;font-size:11px}.hrag .hr-footer{margin-top:15px;color:var(--hr-muted);font-size:12px}.hrag .hr-error{color:#b34a45}
 @media(max-width:560px){.hrag .hr-card{padding:16px}.hrag .hr-stats{gap:6px}.hrag .hr-stat{padding:10px}.hrag .hr-stat strong{font-size:21px}.hrag .hr-head{align-items:flex-start}.hrag h2{font-size:19px}.hrag .hr-actions button{flex:1}}
 @media(prefers-color-scheme:dark){.hrag{color:var(--dsw-alias-label-primary,#e8eaed)}.hrag input[type=url],.hrag input[type=text],.hrag input[type=password]{background:var(--dsw-alias-surface-container,#25272c)}.hrag .hr-error,.hrag .hr-feedback[data-error=true]{color:#f0928b}}
@@ -31,6 +32,14 @@ window.__ModuleLoader__.load({
       const [busy, setBusy] = useState('');
       const [feedback, setFeedback] = useState(null);
       const [pollError, setPollError] = useState(false);
+      const [memory, setMemory] = useState(null);
+      const [memoryText, setMemoryText] = useState('');
+      const [memoryAuto, setMemoryAuto] = useState(true);
+      const [memoryDirty, setMemoryDirty] = useState(false);
+      const [memoryBusy, setMemoryBusy] = useState('');
+      const [memoryFeedback, setMemoryFeedback] = useState(null);
+      const memoryDirtyRef = useRef(false);
+      const memoryRevisionRef = useRef(null);
       const mounted = useRef(true);
       const requests = useRef(new Set());
       const invoke = async (action, payload = {}) => {
@@ -47,12 +56,31 @@ window.__ModuleLoader__.load({
         try { const value = await invoke('settings'); if (mounted.current) { accept(value); setFeedback(null); } }
         catch (error) { if (mounted.current) setFeedback({ error: true, text: error.message || '设置加载失败，请重试' }); }
       };
+      const acceptMemory = value => {
+        setMemory(value); setMemoryText(value.text); setMemoryAuto(value.autoUpdate);
+        memoryRevisionRef.current = value.revision; memoryDirtyRef.current = false; setMemoryDirty(false);
+      };
+      const loadMemory = async () => {
+        setMemoryBusy('load');
+        try { const value = await invoke('memory'); if (mounted.current) { acceptMemory(value); setMemoryFeedback(null); } }
+        catch (error) { if (mounted.current) setMemoryFeedback({ error: true, text: error.message || '摘要加载失败' }); }
+        finally { if (mounted.current) setMemoryBusy(''); }
+      };
       useEffect(() => {
         mounted.current = true;
-        load();
+        load(); loadMemory();
         let timer;
         const poll = async () => {
-          try { const value = await invoke('status'); if (mounted.current) { setStatus(value); setPollError(false); } }
+          try {
+            const value = await invoke('status');
+            if (mounted.current) {
+              setStatus(value); setPollError(false);
+              if (value.memory && value.memory.revision !== memoryRevisionRef.current && !memoryDirtyRef.current) {
+                const fresh = await invoke('memory');
+                if (mounted.current && !memoryDirtyRef.current && fresh.revision >= (memoryRevisionRef.current ?? -1)) acceptMemory(fresh);
+              }
+            }
+          }
           catch { if (mounted.current) setPollError(true); }
           if (mounted.current) timer = setTimeout(poll, 2000);
         };
@@ -79,6 +107,28 @@ window.__ModuleLoader__.load({
         } catch (error) { if (mounted.current) setFeedback({ error: true, text: error.message || '操作失败，请重试' }); }
         finally { if (mounted.current) setBusy(''); }
       };
+      const editMemory = () => { memoryDirtyRef.current = true; setMemoryDirty(true); setMemoryFeedback(null); };
+      const performMemory = async action => {
+        if (!memory || memoryBusy) return;
+        setMemoryBusy(action); setMemoryFeedback(null);
+        try {
+          const result = await invoke(action, action === 'memory-save' ? { text: memoryText, autoUpdate: memoryAuto, expectedRevision: memory.revision } : {});
+          if (!mounted.current) return;
+          if (action === 'memory-save') acceptMemory(result);
+          const currentStatus = await invoke('status');
+          if (!mounted.current) return;
+          setStatus(currentStatus);
+          setMemoryFeedback({ error: false, text: action === 'memory-save' ? '摘要已保存，新会话会自动带入。' : '已请求后台更新，可继续聊天，进度会自动刷新。' });
+        } catch (error) { if (mounted.current) setMemoryFeedback({ error: true, text: error.message || '摘要操作失败，草稿已保留' }); }
+        finally { if (mounted.current) setMemoryBusy(''); }
+      };
+      const memoryState = status?.memory;
+      const memoryStateText = memoryState?.running ? '正在后台更新摘要…'
+        : memoryState?.retryAt > Date.now() ? '上次摘要更新未完成，稍后会自动重试；已保存的摘要仍可使用。'
+        : memoryState?.autoUpdate === false ? '自动更新已暂停，已保存的摘要仍会带入新会话。'
+        : memoryState?.pending && !memoryState.modelReady ? '等待 DSH 默认聊天模型；你也可以先手动填写摘要。'
+        : memoryState?.pending ? `等待整理 ${number(memoryState.pending)} 个新增原文片段，后台会在对话稳定后更新。`
+        : memoryState?.hasText ? '摘要已就绪，新会话会自动带入。' : '尚无摘要，可手动填写，或等待后台根据历史对话生成。';
       const locks = settings?.locks || {};
       const failures = status?.state?.sessionFailures || [];
       const progress = status?.progress || status?.state?.indexProgress;
@@ -105,7 +155,27 @@ window.__ModuleLoader__.load({
       return h('section', { className: 'hrag', 'aria-label': '对话历史 RAG 设置' },
         h('div', { className: 'hr-head' }, h('div', null, h('h2', null, '对话历史 RAG'), h('p', { className: 'hr-muted' }, '把聊过的原话，带回当前对话。')),
           h('span', { className: 'hr-pill' }, status?.configured ? '已配置' : '待配置')),
-        h('form', { className: 'hr-card', onSubmit: e => { e.preventDefault(); perform('save'); } },
+        h('form', { className: 'hr-card', 'aria-label': '常驻记忆摘要设置', onSubmit: e => { e.preventDefault(); performMemory('memory-save'); } },
+          h('h3', null, '常驻记忆摘要'),
+          h('p', { className: 'hr-note' }, '一份跨会话共享的摘要。新会话首次发送时自动带入；同会话不重复，压缩移出后会补回。'),
+          h('label', { className: 'hr-field', htmlFor: 'hr-memory' }, '摘要内容',
+            h('textarea', { id: 'hr-memory', value: memoryText, maxLength: memoryState?.maxChars || 6000,
+              placeholder: '用户背景、偏好、当前进展、约定和待办…', disabled: !memory || Boolean(memoryBusy),
+              onChange: e => { setMemoryText(e.target.value); editMemory(); } })),
+          h('div', { className: 'hr-memory-meta' }, h('span', null, memory?.updatedAt ? `更新于 ${new Date(memory.updatedAt).toLocaleString('zh-CN')} · ${memory.source === 'manual' ? '手动保存' : '自动整理'}` : '尚未生成'),
+            h('span', null, `${number(memoryText.length)} / ${number(memoryState?.maxChars || 6000)} 字符${memoryDirty ? ' · 未保存' : ''}`)),
+          h('label', { className: 'hr-check' }, h('input', { id: 'hr-memory-auto', type: 'checkbox', checked: memoryAuto, disabled: !memory || Boolean(memoryBusy),
+            onChange: e => { setMemoryAuto(e.target.checked); editMemory(); } }), '后台自动增量更新'),
+          h('p', { className: 'hr-note', role: 'status' }, memoryStateText),
+          memoryState ? h('p', { className: 'hr-note' }, `已整理 ${number(memoryState.processed)} / ${number(memoryState.total)} 个去重原文片段${memoryState.model ? ` · 摘要模型：${memoryState.model}` : ''}`) : null,
+          memoryDirty && memoryState && memoryState.revision !== memory?.revision ? h('p', { className: 'hr-error', role: 'alert' }, '后台摘要已更新，当前草稿未被覆盖。请复制草稿，再重新加载摘要后合并保存。') : null,
+          h('div', { className: 'hr-actions' },
+            h('button', { type: 'submit', className: 'hr-primary', disabled: !memory || Boolean(memoryBusy) }, memoryBusy === 'memory-save' ? '正在保存…' : '保存摘要'),
+            h('button', { type: 'button', disabled: !memory || Boolean(memoryBusy) || Boolean(memoryState?.running) || !memoryState?.modelReady || memoryDirty, onClick: () => performMemory('memory-update') }, '立即更新摘要'),
+            h('button', { type: 'button', disabled: Boolean(memoryBusy), onClick: loadMemory }, '重新加载摘要')),
+          memoryFeedback ? h('div', { className: 'hr-feedback', 'data-error': memoryFeedback.error, role: memoryFeedback.error ? 'alert' : 'status' }, memoryFeedback.text) : null,
+          h('p', { className: 'hr-footer' }, '自动更新复用 DSH 默认聊天模型，会产生该模型用量；仅处理新增原文，原文 RAG 继续独立工作。')),
+        h('form', { className: 'hr-card', 'aria-label': 'Embedding 服务设置', onSubmit: e => { e.preventDefault(); perform('save'); } },
           h('h3', null, 'Embedding 服务'),
           field('接口地址', 'hr-endpoint', endpoint, value => { setEndpoint(value); setModels(null); setFeedback(null); }, 'https://example.com/v1', !settings || Boolean(locks.embeddingEndpoint) || Boolean(busy),
             locks.embeddingEndpoint ? '由环境变量或插件配置提供。' : '支持基础地址（如 …/v1）或完整 Embedding 请求地址，会自动补全 /embeddings。'),
@@ -144,7 +214,7 @@ window.__ModuleLoader__.load({
           failures.length ? h('details', null, h('summary', null, `${number(failures.length)} 个会话尚未读取成功`), ...failures.map(f => h('div', { key: f.sessionId }, h('code', null, f.sessionId), ` · ${f.code}`))) : null,
           status?.state?.lastError ? h('details', null, h('summary', null, '最近一次错误'), h('div', null, errors[status.state.lastError.code] || `处理失败（${status.state.lastError.code}）`),
             h('div', null, new Date(status.state.lastError.time).toLocaleString('zh-CN'))) : null,
-          h('div', { className: 'hr-footer' }, '保存原文，不做摘要或遗忘。远程 Embedding 会接收历史片段；测试连接只发送固定测试文字。')));
+          h('div', { className: 'hr-footer' }, '完整保留原文，不自动遗忘。远程 Embedding 会接收历史片段；测试连接只发送固定测试文字。')));
     }
 
     function apply(ctx) {

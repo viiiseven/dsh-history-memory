@@ -17,6 +17,7 @@ async function setup(t, override) {
   const dom = new JSDOM('<!doctype html><html><head></head><body><div id="root"></div></body></html>', { url: 'http://localhost/', runScripts: 'outside-only' });
   globalThis.window = dom.window; globalThis.document = dom.window.document; globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   const state = { embeddingEndpoint: 'https://example.com/v1/embeddings', embeddingModel: 'test-model', key: { configured: true, source: 'file' }, locks: {}, revision: 'rev-1' };
+  const memory = { text: '偏好中文，正在开发项目 A。', revision: 1, autoUpdate: true, updatedAt: 1, source: 'automatic' };
   let status = { configured: true, indexing: true, chunks: 80, embeddedChunks: 40, pending: 40, progress: { phase: 'indexing', total: 20, completed: 10 }, state: {} };
   const calls = [], dispose = [];
   let exports, component, props;
@@ -29,6 +30,8 @@ async function setup(t, override) {
       assert.equal(channel, '/api'); const action = endpoint.split('/').at(-1); calls.push({ action, payload, signal });
       if (override) { const result = await override(action, payload); if (result) return result; }
       if (action === 'settings') return { ok: true, value: structuredClone(state) };
+      if (action === 'memory') return { ok: true, value: structuredClone(memory) };
+      if (action === 'memory-save') { Object.assign(memory, { text: payload.text, autoUpdate: payload.autoUpdate, revision: memory.revision + 1 }); return { ok: true, value: structuredClone(memory) }; }
       if (action === 'status') return { ok: true, value: structuredClone(status) };
       if (action === 'save') { Object.assign(state, { embeddingEndpoint: payload.embeddingEndpoint, embeddingModel: payload.embeddingModel, revision: 'rev-2' }); return { ok: true, value: structuredClone(state) }; }
       return { ok: true, value: { dimensions: 1024, elapsedMs: 12 } };
@@ -40,7 +43,7 @@ async function setup(t, override) {
   t.after(async () => { await React.act(() => root.unmount()); dispose.reverse().forEach(fn => fn()); dom.window.close(); delete globalThis.window; delete globalThis.document; delete globalThis.IS_REACT_ACT_ENVIRONMENT; });
   const input = async (id, value) => React.act(() => { const target = dom.window.document.getElementById(id); Simulate.change(target, { target: { value } }); });
   const button = text => [...dom.window.document.querySelectorAll('button')].find(node => node.textContent === text);
-  const click = async text => React.act(async () => { Simulate.click(button(text)); await delay(5); });
+  const click = async text => React.act(async () => { button(text).click(); await delay(5); });
   return { dom, calls, input, button, click, root, React, setStatus: value => { status = value; } };
 }
 
@@ -61,7 +64,7 @@ test('Settings UI tests an unsaved draft and saves endpoint/model/Key, clearing 
   await click('测试连接');
   assert.equal(calls.find(c => c.action === 'test').payload.apiKey, 'draft-secret');
   assert.ok(dom.window.document.body.textContent.includes('连接成功'));
-  await React.act(async () => { dom.window.document.querySelector('form').dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true })); await delay(10); });
+  await React.act(async () => { dom.window.document.querySelector('form[aria-label="Embedding 服务设置"]').dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true })); await delay(10); });
   const saved = calls.find(c => c.action === 'save').payload;
   assert.equal(saved.embeddingModel, 'new-model'); assert.equal(saved.expectedRevision, 'rev-1');
   assert.equal(dom.window.document.getElementById('hr-key').value, '');
@@ -71,7 +74,7 @@ test('Settings UI tests an unsaved draft and saves endpoint/model/Key, clearing 
 test('Settings UI preserves a rejected draft, escapes server messages and cancels polling on unmount', { skip: !modules }, async t => {
   const { dom, input, React, calls, root } = await setup(t, action => action === 'save' ? { ok: false, error: { message: '设置已在其他窗口修改 <img src=x>' } } : null);
   await input('hr-model', 'unsaved-model');
-  await React.act(async () => { dom.window.document.querySelector('form').dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true })); await delay(10); });
+  await React.act(async () => { dom.window.document.querySelector('form[aria-label="Embedding 服务设置"]').dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true })); await delay(10); });
   assert.equal(dom.window.document.getElementById('hr-model').value, 'unsaved-model');
   assert.equal(dom.window.document.querySelectorAll('img').length, 0);
   assert.ok(dom.window.document.querySelector('[role=alert]').textContent.includes('其他窗口'));
@@ -108,4 +111,28 @@ test('Model picker fetches an unsaved service without a model, supports selectio
   assert.equal(dom.window.document.getElementById('hr-model-select'), null);
   await input('hr-model', 'manually-entered-model');
   assert.equal(dom.window.document.getElementById('hr-model').value, 'manually-entered-model');
+});
+
+test('Summary editor saves text with its revision and preserves a rejected draft', { skip: !modules }, async t => {
+  const { dom, input, click, calls } = await setup(t, (action, payload) => action === 'memory-save' && payload.text === '冲突草稿'
+    ? { ok: false, error: { message: '摘要已在后台更新，请合并保存' } } : null);
+  await input('hr-memory', '手动更新后的记忆'); await click('保存摘要');
+  const saved = calls.find(c => c.action === 'memory-save').payload;
+  assert.deepEqual(structuredClone(saved), { text: '手动更新后的记忆', autoUpdate: true, expectedRevision: 1 });
+  await input('hr-memory', '冲突草稿'); await click('保存摘要');
+  assert.equal(dom.window.document.getElementById('hr-memory').value, '冲突草稿');
+  assert.ok(dom.window.document.body.textContent.includes('合并保存'));
+});
+
+test('Status polling refreshes a clean summary but never overwrites an unsaved summary draft', { skip: !modules }, async t => {
+  let serverText = '后台的新摘要';
+  const { dom, input, React, setStatus } = await setup(t, action => action === 'memory'
+    ? { ok: true, value: { text: serverText, revision: serverText === '后台的新摘要' ? 2 : 3, autoUpdate: true, updatedAt: 2, source: 'automatic' } } : null);
+  assert.equal(dom.window.document.getElementById('hr-memory').value, '后台的新摘要');
+  await input('hr-memory', '尚未保存的手动修订');
+  serverText = '再次后台更新';
+  setStatus({ configured: true, chunks: 2, embeddedChunks: 2, state: {}, memory: { revision: 3, hasText: true, pending: 0, total: 2, processed: 2, autoUpdate: true } });
+  await React.act(async () => { await delay(2100); });
+  assert.equal(dom.window.document.getElementById('hr-memory').value, '尚未保存的手动修订');
+  assert.ok(dom.window.document.body.textContent.includes('当前草稿未被覆盖'));
 });
