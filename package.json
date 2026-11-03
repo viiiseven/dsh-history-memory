@@ -1,13 +1,15 @@
 {
   "name": "dsh-history-rag",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Automatically embed DSH conversation history and retrieve original text before every chat turn.",
   "type": "module",
   "main": "./index.js",
   "exports": { ".": "./index.js", "./client": "./client.js", "./package.json": "./package.json", "./locale/*.json": "./locale/*.json" },
   "bin": { "dsh-history-rag": "./cli.js" },
-  "files": ["index.js", "client.js", "cli.js", "lib", "locale", "cordis.patch.yml", "config.example.json", "README.md", "LICENSE"],
-  "scripts": { "test": "node --test --test-concurrency=1 test/*.test.js", "check": "node scripts/check.mjs" },
+  "files": ["index.js", "client.js", "cli.js", "lib", "locale", "build-info.json", "cordis.patch.yml", "config.example.json", "README.md", "LICENSE"],
+  "scripts": { "test": "node --test --test-concurrency=1 test/*.test.js", "check": "node scripts/check.mjs", "prepack": "node scripts/build-info.mjs" },
+  "repository": { "type": "git", "url": "https://github.com/viiiseven/dsh-history-memory.git" },
+  "homepage": "https://github.com/viiiseven/dsh-history-memory#readme",
   "engines": { "node": ">=24.2" },
   "dsh": { "bundle": { "patch": "./cordis.patch.yml" }, "client": { "platform": "web", "inject": ["@deepseek-ai/dsh-client-connection", "@deepseek-ai/dsh-client-ui-settings"] } },
   "license": "MIT"

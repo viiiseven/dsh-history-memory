@@ -136,3 +136,18 @@ test('Status polling refreshes a clean summary but never overwrites an unsaved s
   assert.equal(dom.window.document.getElementById('hr-memory').value, '尚未保存的手动修订');
   assert.ok(dom.window.document.body.textContent.includes('当前草稿未被覆盖'));
 });
+
+test('Update panel reports available GitHub updates, uses a safe repository link and keeps form drafts intact', { skip: !modules }, async t => {
+  const { dom, input, click, calls, React, setStatus } = await setup(t, action => action === 'updates-check'
+    ? { ok: true, value: { currentVersion: '0.6.0', enabled: true, checking: false, lastCheckedAt: 1, nextCheckAt: 2, canCheckAt: 0,
+      result: { available: true, kind: 'release', latestVersion: '0.7.0', url: 'javascript:alert(1)' } } } : null);
+  await input('hr-memory', '未保存的摘要草稿'); await input('hr-model', '未保存的向量模型');
+  setStatus({ state: {}, updates: { currentVersion: '0.6.0', enabled: true, checking: false, lastCheckedAt: 0, canCheckAt: 0 } });
+  await React.act(async () => { await delay(2100); }); await click('检查插件更新');
+  assert.ok(calls.some(c => c.action === 'updates-check'));
+  assert.ok(dom.window.document.body.textContent.includes('发现新版本 0.7.0'));
+  const link = [...dom.window.document.querySelectorAll('a')].find(a => a.textContent === '查看更新');
+  assert.equal(link.href, 'https://github.com/viiiseven/dsh-history-memory');
+  assert.equal(dom.window.document.getElementById('hr-memory').value, '未保存的摘要草稿');
+  assert.equal(dom.window.document.getElementById('hr-model').value, '未保存的向量模型');
+});

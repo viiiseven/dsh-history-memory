@@ -13,6 +13,7 @@ window.__ModuleLoader__.load({
 .hrag button{cursor:pointer;font:inherit;font-size:13px;border:1px solid var(--hr-line);border-radius:8px;padding:9px 14px;color:inherit;background:transparent}.hrag button:hover:enabled{background:var(--hr-bg)}.hrag button:disabled{opacity:.48;cursor:default}.hrag button.hr-primary{background:var(--hr-accent);border-color:var(--hr-accent);color:#fff}.hrag button.hr-primary:hover:enabled{background:#2468da}.hrag .hr-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:22px}.hrag .hr-feedback{padding:9px 11px;border-radius:7px;margin-top:13px;font-size:13px;white-space:pre-wrap;background:rgba(52,120,237,.07)}.hrag .hr-feedback[data-error=true]{color:#b34a45;background:rgba(190,69,59,.08)}
 .hrag .hr-models{display:flex;align-items:center;gap:9px;margin-top:9px;flex-wrap:wrap}.hrag .hr-models select{flex:1;min-width:180px;max-width:100%;border:1px solid var(--hr-line);border-radius:8px;padding:9px;color:inherit;background:var(--dsw-alias-surface-container,#fff);font:inherit;font-size:13px}.hrag .hr-models button{white-space:nowrap}.hrag .hr-feedback{overflow-wrap:anywhere}
 .hrag textarea{display:block;width:100%;min-height:190px;max-height:560px;resize:vertical;padding:12px;border:1px solid var(--hr-line);border-radius:8px;background:var(--dsw-alias-surface-container,#fff);color:inherit;font:inherit;font-size:14px;line-height:1.7;margin-top:8px}.hrag textarea:focus{outline:2px solid rgba(52,120,237,.25)}.hrag .hr-memory-meta{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:8px;color:var(--hr-muted);font-size:12px}
+.hrag a{color:var(--hr-accent);text-decoration:none}.hrag a:hover{text-decoration:underline}.hrag .hr-update-version{font-size:12px;color:var(--hr-muted);white-space:nowrap}.hrag .hr-update-line{margin-top:12px;font-size:14px}.hrag .hr-update-line[data-available=true]{color:var(--hr-accent);font-weight:600}
 .hrag .hr-section-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:16px}.hrag .hr-section-head h3{margin:0}.hrag .hr-section-head button{padding:6px 10px;font-size:12px}.hrag .hr-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:17px 0 22px}.hrag .hr-stat{padding:13px;border-radius:9px;background:var(--hr-bg)}.hrag .hr-stat strong{font-size:24px;font-weight:600;display:block;letter-spacing:-.5px;line-height:1.3}.hrag .hr-stat span{color:var(--hr-muted);font-size:12px}.hrag .hr-progress-label{display:flex;justify-content:space-between;gap:12px;font-size:13px;margin:15px 0 6px}.hrag progress{display:block;width:100%;height:7px;border:0;overflow:hidden;border-radius:10px;accent-color:var(--hr-accent);background:var(--hr-bg)}.hrag progress::-webkit-progress-bar{background:var(--hr-bg);border-radius:10px}.hrag progress::-webkit-progress-value{background:var(--hr-accent);border-radius:10px}.hrag .hr-state{font-size:13px;display:flex;gap:8px;align-items:center}.hrag .hr-dot{width:7px;height:7px;border-radius:100%;background:var(--hr-accent);flex-shrink:0}.hrag details{font-size:12px;color:var(--hr-muted);margin-top:14px}.hrag summary{cursor:pointer}.hrag code{word-break:break-all;font-size:11px}.hrag .hr-footer{margin-top:15px;color:var(--hr-muted);font-size:12px}.hrag .hr-error{color:#b34a45}
 @media(max-width:560px){.hrag .hr-card{padding:16px}.hrag .hr-stats{gap:6px}.hrag .hr-stat{padding:10px}.hrag .hr-stat strong{font-size:21px}.hrag .hr-head{align-items:flex-start}.hrag h2{font-size:19px}.hrag .hr-actions button{flex:1}}
 @media(prefers-color-scheme:dark){.hrag{color:var(--dsw-alias-label-primary,#e8eaed)}.hrag input[type=url],.hrag input[type=text],.hrag input[type=password]{background:var(--dsw-alias-surface-container,#25272c)}.hrag .hr-error,.hrag .hr-feedback[data-error=true]{color:#f0928b}}
@@ -38,13 +39,15 @@ window.__ModuleLoader__.load({
       const [memoryDirty, setMemoryDirty] = useState(false);
       const [memoryBusy, setMemoryBusy] = useState('');
       const [memoryFeedback, setMemoryFeedback] = useState(null);
+      const [updateBusy, setUpdateBusy] = useState(false);
+      const [updateFeedback, setUpdateFeedback] = useState('');
       const memoryDirtyRef = useRef(false);
       const memoryRevisionRef = useRef(null);
       const mounted = useRef(true);
       const requests = useRef(new Set());
       const invoke = async (action, payload = {}) => {
         const abort = new AbortController(); requests.current.add(abort);
-        const timeout = setTimeout(() => abort.abort(), action === 'scan' ? 30000 : 15000);
+        const timeout = setTimeout(() => abort.abort(), action === 'scan' ? 30000 : action === 'updates-check' ? 65000 : 15000);
         try { return await call(action, payload, abort.signal); }
         finally { clearTimeout(timeout); requests.current.delete(abort); }
       };
@@ -130,6 +133,37 @@ window.__ModuleLoader__.load({
         : memoryState?.pending ? `等待整理 ${number(memoryState.pending)} 个新增原文片段，后台会在对话稳定后更新。`
         : memoryState?.hasText ? '摘要已就绪，新会话会自动带入。' : '尚无摘要，可手动填写，或等待后台根据历史对话生成。';
       const locks = settings?.locks || {};
+      const updates = status?.updates;
+      const updateResult = updates?.result;
+      const repository = 'https://github.com/viiiseven/dsh-history-memory';
+      let updateUrl = repository;
+      try {
+        const link = new URL(updateResult?.url || repository);
+        if (link.origin === 'https://github.com' && !link.username && !link.password
+          && (link.pathname === '/viiiseven/dsh-history-memory' || link.pathname.startsWith('/viiiseven/dsh-history-memory/'))) updateUrl = link.href;
+      } catch {}
+      const checkUpdates = async () => {
+        if (updateBusy || updates?.checking) return;
+        setUpdateBusy(true); setUpdateFeedback('');
+        try {
+          const value = await invoke('updates-check');
+          if (mounted.current) setStatus(previous => ({ ...previous, updates: value }));
+        } catch (error) { if (mounted.current) setUpdateFeedback(error.message || '更新检查暂未完成，请稍后重试'); }
+        finally { if (mounted.current) setUpdateBusy(false); }
+      };
+      const updateText = updates?.checking || updateBusy ? '正在检查 GitHub…'
+        : updates?.error ? ({ TIMEOUT: '检查超时，将在稍后自动重试。', RATE_LIMITED: 'GitHub 暂时限流，已延后重试。', INVALID_RESPONSE: '仓库返回的信息无法识别，请稍后重试。' }[updates.error.code] || '暂时无法完成检查，将在稍后自动重试。')
+        : !updateResult ? updates?.enabled === false ? '自动检查已关闭，仍可手动检查。' : '启动后自动检查，之后默认每 6 小时检查一次。'
+        : updateResult.kind === 'release' ? `发现新版本 ${updateResult.latestVersion}`
+        : updateResult.kind === 'version' ? `仓库版本已更新至 ${updateResult.latestVersion}`
+        : updateResult.kind === 'commit' ? '仓库有新提交（版本号未变）'
+        : updateResult.kind === 'local-newer' ? '当前安装的版本或提交领先于仓库。'
+        : updateResult.kind === 'diverged' ? '当前安装与仓库存在不同修改，可查看差异。'
+        : updateResult.kind === 'version-only' ? `版本号一致（${updateResult.latestVersion}），尚未核对提交差异。`
+        : `当前版本与仓库一致（${updateResult.latestVersion}）。`;
+      const updateNote = updateResult?.note === 'RATE_LIMITED' ? 'GitHub API 限流，本次已改用公开版本文件；同版本号的提交变化暂未检查。'
+        : ['LOCAL_CHANGES', 'NO_BUILD_COMMIT', 'UNKNOWN_BUILD_COMMIT'].includes(updateResult?.note) ? '当前构建缺少可比较的提交标识或包含本地修改，本次仅比较版本号。'
+        : updateResult?.note ? '本次仅核对公开版本号，提交差异检查暂不可用。' : '';
       const failures = status?.state?.sessionFailures || [];
       const progress = status?.progress || status?.state?.indexProgress;
       const discovered = progress?.total ?? status?.state?.lastScan?.discoveredSessions;
@@ -155,6 +189,17 @@ window.__ModuleLoader__.load({
       return h('section', { className: 'hrag', 'aria-label': '对话历史 RAG 设置' },
         h('div', { className: 'hr-head' }, h('div', null, h('h2', null, '对话历史 RAG'), h('p', { className: 'hr-muted' }, '把聊过的原话，带回当前对话。')),
           h('span', { className: 'hr-pill' }, status?.configured ? '已配置' : '待配置')),
+        h('div', { className: 'hr-card', 'aria-label': '插件更新' },
+          h('div', { className: 'hr-section-head' }, h('h3', null, '插件更新'), h('span', { className: 'hr-update-version' }, updates ? `当前版本 ${updates.currentVersion}` : '读取版本信息…')),
+          h('p', { className: 'hr-note' }, '检查 GitHub 新版本及源码提交，升级由你决定。'),
+          h('p', { className: 'hr-update-line', 'data-available': Boolean(updateResult?.available), role: 'status' }, updateText),
+          updateNote ? h('p', { className: 'hr-note' }, updateNote) : null,
+          updates?.lastCheckedAt ? h('p', { className: 'hr-note' }, `上次检查：${new Date(updates.lastCheckedAt).toLocaleString('zh-CN')}${updates.enabled && updates.nextCheckAt ? ` · 下次自动检查：${new Date(updates.nextCheckAt).toLocaleString('zh-CN')}` : ''}`) : null,
+          updates?.canCheckAt > Date.now() ? h('p', { className: 'hr-note' }, `下次可手动检查：${new Date(updates.canCheckAt).toLocaleString('zh-CN')}`) : null,
+          h('div', { className: 'hr-actions' },
+            h('button', { type: 'button', disabled: !updates || updateBusy || updates.checking || updates.canCheckAt > Date.now(), onClick: checkUpdates }, updateBusy || updates?.checking ? '正在检查…' : '检查插件更新'),
+            h('a', { href: updateUrl, target: '_blank', rel: 'noopener noreferrer' }, updateResult?.available ? '查看更新' : updateResult?.kind === 'diverged' ? '查看差异' : '打开 GitHub 仓库')),
+          updateFeedback ? h('p', { className: 'hr-error', role: 'alert' }, updateFeedback) : null),
         h('form', { className: 'hr-card', 'aria-label': '常驻记忆摘要设置', onSubmit: e => { e.preventDefault(); performMemory('memory-save'); } },
           h('h3', null, '常驻记忆摘要'),
           h('p', { className: 'hr-note' }, '一份跨会话共享的摘要。新会话首次发送时自动带入；同会话不重复，压缩移出后会补回。'),

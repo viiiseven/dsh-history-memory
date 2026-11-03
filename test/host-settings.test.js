@@ -13,6 +13,7 @@ test('Installed DSH Connection: native settings routes are owner-only and persis
     sdk('cordis'), sdk('dsh-session'), sdk('dsh-session-query'), sdk('dsh-client-connection'),
   ]);
   const config = await tempConfig(t);
+  t.mock.method(globalThis, 'fetch', async () => Response.json({ tag_name: 'v9.0.0', draft: false, prerelease: false }));
   const ctx = new Context();
   new SessionStore(ctx); new SessionQueryEngine(ctx);
   new HostConnectionService(ctx, [], { isAuthenticated: () => true });
@@ -45,4 +46,7 @@ test('Installed DSH Connection: native settings routes are owner-only and persis
   assert.equal(calls[0].options.headers.Authorization, 'Bearer native-test-secret');
   assert.ok(!JSON.stringify(found).includes('native-test-secret'));
   assert.equal((await handler.fetch(request('models'), { principal: { kind: 'guest' } })).status, 403);
+  const update = (await (await handler.fetch(request('updates-check'), peer)).json()).result;
+  assert.equal(update.ok, true); assert.equal(update.value.result.latestVersion, '9.0.0');
+  assert.equal((await handler.fetch(request('updates-check'), { principal: { kind: 'guest' } })).status, 403);
 });

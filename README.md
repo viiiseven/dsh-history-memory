@@ -4,6 +4,25 @@
 
 **全部历史文字对话 → 原文切块 → Embedding → SQLite → 每个新用户输入前自动向量检索 → 注入命中原文。**
 
+## 0.6.0：GitHub 自动更新检查
+
+固定检查仓库 [viiiseven/dsh-history-memory](https://github.com/viiiseven/dsh-history-memory)。继续使用安装包方式；此功能只读取更新信息并提示，不下载、执行或安装远程代码，也不启用开发链接或热重载。
+
+- 默认启动约 15 秒后自动检查，此后每 6 小时检查一次。结果和下次检查时间缓存在本地 SQLite，重启不会重复请求仍有效的检查；升级包或构建提交变化后会重新检查。
+- 设置页顶部新增 **插件更新**，显示当前版本、检查结果及下次检查时间，可点击 **检查插件更新**。手动检查最短间隔 1 分钟，同一时间的多个请求合并执行；无需先打开设置页才会自动检查。
+- 优先识别新的正式 GitHub Release；没有新 Release 时读取 `main` 的 `package.json`。远端版本高于当前安装版本才提示版本更新，远端较旧时不会提示降级。
+- 安装包带有构建提交且无未提交修改时，同版本号也会比较已安装提交与远端 `main` 的先后关系：只有远端确实领先才提示 **仓库有新提交（版本号未变）**。未知提交、分叉或本地修改不会直接当成新版本。
+- GitHub API 不可用或限流时，尝试读取该仓库的公开 `package.json`，并明确显示 **仅比较版本号，未检查同版本提交变化**。无法访问仓库时显示失败与重试状态，不误报“已是最新”。
+- **查看更新** 打开该仓库的 Release、源码或提交比较页面，由你决定何时安装。检查请求只包含公开仓库地址及版本/提交信息，不携带对话、摘要、Embedding Key 或文件路径。
+
+发布安装包前先提交源码，然后在仓库目录执行：
+
+```powershell
+npm pack --pack-destination ..\packages --offline
+```
+
+`prepack` 会把当前 Git 提交及是否包含未提交修改写入包内的 `build-info.json`，该文件不进入 Git。源码归档或省略构建步骤、没有提交标识的安装包仍能比较版本号。推荐每次正式更新提高 `package.json.version` 并推送到仓库；也可以发布对应版本的 Release。修改后未推送的本地源码不会被远程检查发现。
+
 ## 0.5.0：常驻记忆摘要
 
 在 **设置 → 对话历史 RAG → 常驻记忆摘要** 查看或修改摘要正文，点击 **保存摘要** 即时保存到本地 SQLite。摘要为同一数据目录下跨会话共享的一份文本，适合背景、偏好、约定、项目进展和待办；`scope` 继续约束原文 RAG，摘要本身是全局共享的。显式排除的会话和工作目录不会成为新的摘要输入。
@@ -108,7 +127,7 @@ Key 输入框默认隐藏；已有 Key 不会从服务端返回界面。留空�
 
 ## 安装
 
-使用 DSH 插件管理器安装项目目录或 `dsh-history-rag-0.5.0.tgz`，启用后完全退出并重新打开 DSH。以桌面版 profile 为例：
+使用 DSH 插件管理器安装项目目录或 `dsh-history-rag-0.6.0.tgz`，启用后完全退出并重新打开 DSH。以桌面版 profile 为例：
 
 ```powershell
 dsh plugin --profile desktop add "安装包或本项目的绝对路径"
@@ -148,7 +167,7 @@ dsh plugin --profile desktop add "安装包或本项目的绝对路径"
 
    ```powershell
    dsh plugin --profile desktop add "本项目的绝对路径"
-   # 也可以将参数替换为 dsh-history-rag-0.5.0.tgz 的绝对路径
+   # 也可以将参数替换为 dsh-history-rag-0.6.0.tgz 的绝对路径
    ```
 
    完全退出并重新打开 DSH。若命令行中没有 `dsh`，可在 DSH 插件管理的添加入口使用本地安装来源；桌面 GUI 安装流程尚未实机验收。
@@ -202,6 +221,8 @@ history-rag/
 | `memoryInputChars` | 16000 | 每批新增原文的字符预算；单个超大原文片段会完整处理 |
 | `memoryDebounceMs` / `memoryIntervalMs` | 30000 / 60000 | 对话变更后的等待时间 / 自动更新最短间隔 |
 | `memoryTimeoutMs` | 120000 | 单批摘要生成等待上限 |
+| `updateCheckEnabled` | true | 是否后台自动检查 GitHub 更新；关闭后仍可手动检查 |
+| `updateCheckIntervalMs` / `updateCheckTimeoutMs` | 21600000 / 10000 | 自动检查间隔（6 小时）/ 单次检查等待上限 |
 | `excludeSessionIds` / `excludeWorkspaces` | 空数组 | 显式排除的会话和工作目录，工作目录按完整路径精确匹配 |
 
 默认“全部历史”指宿主可读取的全部用户与助手文字对话。图片、音频、文件正文不做 OCR 或转录，模型思考块、系统提示和工具调用参数不属于默认语料。工具文字结果可显式开启。尚不支持导入其他软件的聊天导出文件。
@@ -229,6 +250,7 @@ node .\cli.js reindex --vectors    # 请求清空当前模型的向量缓存并�
 | `lib/embedding.js` | OpenAI 兼容 Embedding 请求与模型身份 |
 | `lib/endpoints.js` | 基础地址补全、完整请求地址与模型列表路径 |
 | `lib/models.js` | 服务模型列表、同域目录兼容与分页 |
+| `lib/updates.js`, `scripts/build-info.mjs` | GitHub 更新检查、构建提交标识、缓存与失败重试 |
 | `lib/store.js` | SQLite、向量缓存、余弦排序和来源过滤 |
 | `lib/database.js`, `lib/db-worker.js` | 独立数据库线程及取消信号 |
 | `lib/recall.js` | 用户输入提取、来源归因、预算控制与自动注入 |
