@@ -116,3 +116,14 @@ test('Summary model route is durable, rejects unknown providers and can return t
   assert.deepEqual(saved.modelSelection, { provider: 'configured', model: 'chat' });
   assert.equal((await reopened.memory.save({ text: '保留', autoUpdate: false, expectedRevision: 2, modelSelection: null })).modelSelection, null);
 });
+
+test('Failed summary exposes a bounded diagnostic while preserving original pending chunks', async t => {
+  const { runtime } = await setup(t);
+  runtime.memory.setGenerator(generator(async () => { throw Object.assign(new Error('private response and key'), { code: 'RATE_LIMITED', status: 429 }); }));
+  await runtime.memory.kick();
+  const status = await runtime.memory.status();
+  assert.equal(status.lastError.code, 'RATE_LIMITED'); assert.equal(status.lastError.status, 429);
+  assert.equal(status.pending, 2); assert.equal(status.hasText, false);
+  assert.ok(status.startedAt > 0 && status.finishedAt >= status.startedAt);
+  assert.ok(!JSON.stringify(status).includes('private'));
+});

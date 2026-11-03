@@ -177,3 +177,10 @@ test('Missing summary transport route shows a restart instruction instead of the
   assert.ok(dom.window.document.body.textContent.includes('完全退出 DSH 后重新打开'));
   assert.ok(!dom.window.document.body.textContent.includes('transport failure'));
 });
+
+test('Summary failures show the native error code and status instead of only a generic retry message', { skip: !modules }, async t => {
+  const { dom } = await setup(t, action => action === 'status' ? { ok: true, value: { state: {}, memory: { revision: 1, modelReady: true,
+    pending: 2, total: 2, processed: 0, retryAt: Date.now() + 60000, lastError: { code: 'ACCOUNT_TOKEN_INVALID', status: 401 } } } } : null);
+  assert.ok(dom.window.document.body.textContent.includes('登录状态失效'));
+  assert.ok(dom.window.document.body.textContent.includes('ACCOUNT_TOKEN_INVALID · HTTP 401'));
+});

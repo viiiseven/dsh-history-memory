@@ -19,6 +19,7 @@ test('Installed DSH LLM and Connection generate, edit and inject a durable summa
   ctx.provide('agents', {}); ctx.provide('agentDefaultModel', { currentSelection: () => ({ provider: 'synthetic', model: 'native-summary' }) });
   const calls = [];
   class Adapter extends LlmAdapter {
+    async resolveModel(provider, model) { return { provider, id: model, name: model, toolUpdate: 'addition-only' }; }
     async listModels(provider) { return [{ provider, id: 'native-summary', name: '默认摘要模型' }, { provider, id: 'picked-summary', name: '指定摘要模型' }]; }
     async *stream(options) {
       calls.push(options);
@@ -46,6 +47,9 @@ test('Installed DSH LLM and Connection generate, edit and inject a durable summa
   await rpc('memory-update');
   await until(async () => (await rpc('memory')).value?.text === '用户偏好中文。');
   assert.equal(calls[0].model, 'native-summary'); assert.equal(calls[0].purpose, 'history-rag-summary');
+  assert.equal(calls[0].toolHistory, undefined);
+  assert.equal(calls[0].messages.length, 1); assert.equal(calls[0].messages[0].role, 'user');
+  assert.ok(calls[0].system.includes('摘要正文最多'));
   const models = (await rpc('memory-models')).value;
   assert.equal(models.providers[0].id, 'synthetic');
   assert.ok(models.providers[0].models.some(m => m.id === 'picked-summary'));
@@ -93,4 +97,15 @@ test('Native summary calls prefer a saved model, then actual chat routing, then 
   runtime.memory.record.modelSelection = { provider: 'configured', model: 'explicit-chat' }; await run();
   assert.deepEqual(calls.map(c => [c.provider, c.model]), [['default', 'default-chat'], ['chat', 'window-chat'], ['configured', 'explicit-chat']]);
   assert.ok(calls.every(c => !('apiKey' in c) && !('baseURL' in c)));
+});
+
+test('Native terminal failures retain the diagnostic code and status without exposing provider response text', async () => {
+  const runtime = { config: { memoryMaxTokens: 1000 }, memory: {} };
+  const ctx = { get: () => ({ currentSelection: () => ({ provider: 'test', model: 'test' }) }), llm: { async *stream() {
+    yield { type: 'finish', reason: { kind: 'error', failure: { code: 'RATE_LIMITED', status: 429, message: 'private-provider-body-and-key' } } };
+  } } };
+  await assert.rejects(hostSummarizer(ctx, runtime).generate({ previous: {}, chunks: [], maxChars: 100, signal: new AbortController().signal }), error => {
+    assert.equal(error.code, 'RATE_LIMITED'); assert.equal(error.status, 429);
+    assert.ok(!error.message.includes('private-provider')); return true;
+  });
 });

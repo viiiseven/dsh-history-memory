@@ -146,6 +146,15 @@ body[data-ds-dark-theme] .hrag{color-scheme:dark;color:var(--dsw-alias-label-pri
         finally { if (mounted.current) setMemoryBusy(''); }
       };
       const memoryState = status?.memory;
+      const memoryFailure = memoryState?.lastError;
+      const memoryFailureText = memoryFailure ? ({
+        SUMMARY_TRUNCATED: '模型输出达到长度上限，摘要未完成；请调整摘要生成上限或选择其他模型。',
+        SUMMARY_TOO_LONG: '模型返回的摘要超过字符上限，已保留原摘要。', SUMMARY_EMPTY: '模型未返回摘要正文，已保留原摘要。',
+        ABORTED: '摘要请求已取消或超时。', TIMEOUT: '摘要模型响应超时。', TRANSPORT: '摘要模型连接失败，请检查 DSH 中该模型的连接。',
+        NO_ADAPTER: '摘要模型的服务商尚未启用，请在 DSH 中检查模型配置。',
+        ACCOUNT_TOKEN_INVALID: 'DSH 账号登录状态失效，请重新登录。', ACCOUNT_QUOTA_EXCEEDED: 'DSH 账号额度不足，请检查账号余额。',
+        UNEXPECTED_ERROR: 'DSH 模型适配器处理失败，请检查插件与 DSH 版本。',
+      }[memoryFailure.code] || '摘要模型调用失败，请检查 DSH 中所选模型的配置。') : '';
       const memoryStateText = memoryState?.running ? '正在后台更新摘要…'
         : memoryState?.retryAt > Date.now() ? '上次摘要更新未完成，稍后会自动重试；已保存的摘要仍可使用。'
         : memoryState?.autoUpdate === false ? '自动更新已暂停，已保存的摘要仍会带入新会话。'
@@ -241,6 +250,8 @@ body[data-ds-dark-theme] .hrag{color-scheme:dark;color:var(--dsw-alias-label-pri
           h('label', { className: 'hr-check' }, h('input', { id: 'hr-memory-auto', type: 'checkbox', checked: memoryAuto, disabled: !memory || Boolean(memoryBusy),
             onChange: e => { setMemoryAuto(e.target.checked); editMemory(); } }), '后台自动增量更新'),
           h('p', { className: 'hr-note', role: 'status' }, memoryStateText),
+          memoryFailure ? h('p', { className: 'hr-error', role: 'alert' }, `${memoryFailureText}（${memoryFailure.code}${memoryFailure.status ? ` · HTTP ${memoryFailure.status}` : ''}）`) : null,
+          memoryState?.running && memoryState.startedAt ? h('p', { className: 'hr-note' }, `本次已等待 ${Math.max(0, Math.floor((Date.now() - memoryState.startedAt) / 1000))} 秒；完成后会自动显示摘要。`) : null,
           memoryState ? h('p', { className: 'hr-note' }, `已整理 ${number(memoryState.processed)} / ${number(memoryState.total)} 个去重原文片段${memoryState.model ? ` · 摘要模型：${memoryState.model}` : ''}`) : null,
           memoryDirty && memoryState && memoryState.revision !== memory?.revision ? h('p', { className: 'hr-error', role: 'alert' }, '后台摘要已更新，当前草稿未被覆盖。请复制草稿，再重新加载摘要后合并保存。') : null,
           h('div', { className: 'hr-actions' },
