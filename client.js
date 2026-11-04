@@ -141,7 +141,7 @@ body[data-ds-dark-theme] .hrag{color-scheme:dark;color:var(--dsw-alias-label-pri
           const currentStatus = await invoke('status');
           if (!mounted.current) return;
           setStatus(currentStatus);
-          setMemoryFeedback({ error: false, text: action === 'memory-save' ? '摘要已保存，新会话会自动带入。' : '已请求处理下一批摘要，可继续聊天，进度会自动刷新。' });
+          setMemoryFeedback({ error: false, text: action === 'memory-save' ? '摘要已保存，新会话会自动带入。' : '已请求在后台逐批整理待处理片段，可继续聊天。' });
         } catch (error) { if (mounted.current) setMemoryFeedback({ error: true, text: error.message || '摘要操作失败，草稿已保留' }); }
         finally { if (mounted.current) setMemoryBusy(''); }
       };

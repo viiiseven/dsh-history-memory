@@ -144,18 +144,28 @@ test('A truncated summary retries the same batch with a larger output budget', a
   assert.equal((await runtime.memory.status()).pending, 0);
 });
 
-test('A manual update processes one bounded batch from 2,000 sessions and respects the next automatic interval', async t => {
+test('One manual update drains 2,000 sessions in bounded batches without waiting between commits', async t => {
   const { runtime, sessions } = await setup(t, { memoryIntervalMs: 60000 });
   for (let i = 1; i < 2000; i++) sessions.set(`chat-${i}`, snapshot(`chat-${i}`, [`历史会话 ${i}`]));
   await runtime.scan();
   await until(async () => !runtime.pumpRunning && (await runtime.memory.status()).pending === 2001, 15000);
+  await runtime.memory.save({ text: '初始摘要', autoUpdate: false, expectedRevision: 0 });
   const batches = [];
-  runtime.memory.setGenerator(generator(async ({ chunks }) => { batches.push(chunks.length); return '已整理首批'; }));
+  const hashes = new Set();
+  runtime.memory.setGenerator(generator(async ({ chunks, previous }) => {
+    assert.equal(previous.revision, batches.length + 1);
+    for (const chunk of chunks) {
+      assert.ok(!hashes.has(chunk.hash));
+      hashes.add(chunk.hash);
+    }
+    batches.push(chunks.length);
+    return `已整理 ${hashes.size} 个片段`;
+  }));
   runtime.memory.requestUpdate();
-  await until(() => !runtime.memory.running);
-  await runtime.memory.kick();
-  assert.deepEqual(batches, [8]);
-  assert.equal((await runtime.memory.status()).pending, 1993);
+  await until(() => !runtime.memory.running, 15000);
+  assert.deepEqual(batches, [...Array(250).fill(8), 1]);
+  assert.equal((await runtime.memory.status()).pending, 0);
+  assert.equal((await runtime.memory.read()).text, '已整理 2001 个片段');
 });
 
 test('Batching respects the text budget and leaves a long fragment intact for the next batch', async t => {
@@ -166,10 +176,27 @@ test('Batching respects the text budget and leaves a long fragment intact for th
   const batches = [];
   runtime.memory.setGenerator(generator(async ({ chunks }) => { batches.push(chunks.map(c => c.text)); return '摘要'; }));
   await runtime.memory.kick();
-  runtime.memory.requestUpdate();
-  await until(() => !runtime.memory.running);
   assert.deepEqual(batches, [['甲'.repeat(9000)], ['乙'.repeat(9000)]]);
   assert.equal((await runtime.memory.status()).pending, 0);
+});
+
+test('A failed later batch keeps earlier commits and stops the drain until retry', async t => {
+  const { runtime, sessions } = await setup(t);
+  sessions.set('a', snapshot('a', Array.from({ length: 10 }, (_, i) => `原文片段 ${i}`)));
+  runtime.markDirty('a');
+  await until(() => !runtime.pumpRunning);
+  let calls = 0;
+  runtime.memory.setGenerator(generator(async () => {
+    calls++;
+    if (calls > 1) throw Object.assign(new Error('rate limited'), { code: 'RATE_LIMITED', status: 429 });
+    return '首批已保存';
+  }));
+  await runtime.memory.kick();
+  await runtime.memory.kick();
+  assert.equal(calls, 2);
+  assert.equal((await runtime.memory.read()).text, '首批已保存');
+  assert.equal((await runtime.memory.status()).pending, 2);
+  assert.equal(runtime.memory.lastError.code, 'RATE_LIMITED');
 });
 
 test('When both attempts truncate, the saved summary and pending fragments survive the retry cooldown', async t => {
