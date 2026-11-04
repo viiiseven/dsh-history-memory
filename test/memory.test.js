@@ -6,12 +6,12 @@ import { eventText } from '../lib/text.js';
 import { applyMemoryPatch, parsePatch } from '../lib/memory-document.js';
 import { tempConfig, snapshot, message, track, until } from './helpers.js';
 
-async function setup(t, overrides = {}) {
+async function setup(t, overrides = {}, runtimeOptions = {}) {
   const config = await tempConfig(t, { embeddingEndpoint: '', embeddingModel: '', memoryDebounceMs: 0, memoryIntervalMs: 1000,
     memoryTriggerTokens: 0, memoryMaxWaitMs: 0, updateCheckEnabled: false, ...overrides });
   const sessions = new Map([['a', snapshot('a', ['偏好使用中文回复', '项目 A 使用端口 8181'])]]);
   const source = { async listSessions() { return [...sessions.values()].map(s => ({ header: s.session })); }, async readSession(id) { return sessions.get(id); } };
-  const runtime = track(t, new HistoryRag(config, source)); await runtime.start();
+  const runtime = track(t, new HistoryRag(config, source, runtimeOptions)); await runtime.start();
   await until(() => !runtime.pumpRunning && !runtime.scanRunning);
   return { runtime, config, sessions, source };
 }
@@ -60,7 +60,10 @@ test('Manual editing aborts outstanding work and rejects stale windows without l
   finish(add(input, '过时输出')); await pending;
   assert.equal((await runtime.memory.read()).text, '用户修订'); assert.equal((await runtime.memory.status()).pending, 2);
   await assert.rejects(runtime.memory.save({ text: '过期编辑', autoUpdate: false, expectedRevision: 0 }), { code: 'MEMORY_CONFLICT' });
-  runtime.memory.setGenerator(generator(async input => { assert.equal(input.previous.text, '用户修订'); return add(input, '原文中的其他信息'); }));
+  runtime.memory.setGenerator(generator(async input => {
+    if (input.phase === 'compact') return { operations: [] };
+    assert.equal(input.previous.text, '用户修订'); return add(input, '原文中的其他信息');
+  }));
   await runManual(runtime);
   assert.equal((await runtime.memory.read()).text, '用户修订\n\n原文中的其他信息');
 });
@@ -82,6 +85,7 @@ test('One manual run drains 2,000 sessions in bounded token batches, without int
   await rescan(runtime);
   const ids = new Set(), sizes = [];
   runtime.memory.setGenerator(generator(async input => {
+    if (input.phase === 'compact') return { operations: [] };
     for (const addition of input.batch.additions) { assert.ok(!ids.has(addition.id)); ids.add(addition.id); }
     sizes.push(input.batch.additions.length);
     assert.ok(input.batch.estimatedTokens <= 10000);
@@ -121,6 +125,73 @@ test('Capacity compaction only sees staged memory, and never resends the source 
   await runtime.memory.kick();
   assert.equal(calls.length, 2); assert.equal(calls[1].batch.additions.length, 0);
   assert.equal((await runtime.memory.read()).text, '精简的有效记忆'); assert.equal((await runtime.memory.status()).pending, 0);
+});
+
+test('Every growing update consolidates duplicates below capacity, including when already above 85%', async t => {
+  for (const original of ['偏好中文。', '保留的有效记忆'.repeat(120)]) {
+    const { runtime, sessions } = await setup(t, { memoryMaxChars: 1024 });
+    const calls = [];
+    runtime.memory.setGenerator(generator(input => {
+      calls.push(input);
+      if (input.phase === 'compact') {
+        assert.deepEqual(input.batch, { additions: [], context: [] });
+        return { operations: [{ op: 'remove', id: input.previous.entries.at(-1).id, sources: [] }] };
+      }
+      return add(input, input.previous.entries.length ? '另一种说法重复既有信息。' : original);
+    }));
+    await runtime.memory.kick();
+    sessions.set('b', snapshot('b', ['同一事实再次出现'])); await rescan(runtime); await runManual(runtime);
+    assert.deepEqual(calls.map(call => call.phase), ['update', 'update', 'compact']);
+    assert.equal((await runtime.memory.read()).text, original);
+    assert.equal((await runtime.memory.status()).pending, 0);
+    await runtime.close();
+  }
+});
+
+test('No-op, exact duplicates and shrinking updates spend no separate compaction request', async t => {
+  const { runtime, sessions } = await setup(t);
+  const phases = []; let stage = 0;
+  runtime.memory.setGenerator(generator(input => {
+    phases.push(input.phase); assert.equal(input.phase, 'update');
+    if (stage === 0 || stage === 2) return add(input, '偏好简洁的中文回答。');
+    if (stage === 1) return { operations: [] };
+    return update(input, '偏好中文。');
+  }));
+  await runtime.memory.kick();
+  for (stage = 1; stage <= 3; stage++) {
+    sessions.set(`b${stage}`, snapshot(`b${stage}`, [`增量原文 ${stage}`])); await rescan(runtime); await runManual(runtime);
+  }
+  assert.deepEqual(phases, Array(4).fill('update'));
+  assert.equal((await runtime.memory.read()).text, '偏好中文。');
+});
+
+test('A compaction patch cannot expand the summary or bypass manual/locked protection', () => {
+  const entry = { id: 'one', text: '简短记忆', locked: false, protectedAt: 0, sources: [] };
+  const patch = { operations: [{ op: 'replace', id: 'one', text: '反而写出了更长的重复记忆', sources: [] }] };
+  assert.throws(() => applyMemoryPatch([entry], patch, [], { compact: true }), { code: 'SUMMARY_INVALID_PATCH' });
+  const remove = { operations: [{ op: 'remove', id: 'one', sources: [] }] };
+  assert.throws(() => applyMemoryPatch([{ ...entry, locked: true }], remove, [], { compact: true }), { code: 'SUMMARY_LOCKED' });
+  assert.throws(() => applyMemoryPatch([{ ...entry, protectedAt: 1 }], remove, [], { compact: true }), { code: 'SUMMARY_PROTECTED' });
+});
+
+test('Archiving or deleting a source during generation rejects its result before compaction/commit', async t => {
+  for (const action of ['archive', 'delete']) {
+    const archived = new Set();
+    const { runtime, sessions } = await setup(t, {}, { archivedSessionIds: () => [...archived] });
+    await runtime.memory.save({ text: '已保存摘要不受影响', autoUpdate: true, expectedRevision: 0 });
+    let finish, calls = 0;
+    runtime.memory.setGenerator(generator(input => {
+      calls++; return new Promise(resolve => { finish = () => resolve(add(input, '过期输入不能写入')); });
+    }));
+    const running = runtime.memory.kick(); await until(() => Boolean(finish));
+    if (action === 'archive') archived.add('a');
+    else { sessions.delete('a'); await rescan(runtime); }
+    finish(); await running;
+    assert.equal(calls, 1); assert.equal((await runtime.memory.read()).text, '已保存摘要不受影响');
+    assert.equal((await runtime.memory.status()).pending, 0);
+    assert.equal(runtime.memory.work, null);
+    await runtime.close();
+  }
 });
 
 test('Unfit staged changes persist across restart and fit a raised capacity without another paid request', async t => {

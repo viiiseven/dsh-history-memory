@@ -9,17 +9,19 @@ async function setup(t, configChanges = {}) {
   const config = await tempConfig(t, configChanges);
   const sessions = new Map([
     ['ancient', snapshot('ancient', ['多年前的蓝鲸部署记录', '原始回答全文'], 'A')],
-    ['archived', snapshot('archived', ['已归档的原始旧话'], 'B')],
+    ['other', snapshot('other', ['另一会话的原始旧话'], 'B')],
+    ['archived', snapshot('archived', ['归档内容不得检索'], 'B')],
   ]);
+  const archived = new Set(['archived']);
   const source = { async listSessions() { return [...sessions.values()].map(s => ({ header: s.session, persisted: true, live: false })); }, async readSession(id) { return structuredClone(sessions.get(id)); } };
   const client = fakeClient();
-  const runtime = track(t, new HistoryRag(config, source, { client }));
+  const runtime = track(t, new HistoryRag(config, source, { client, archivedSessionIds: () => [...archived] }));
   await runtime.start();
   await until(async () => (await runtime.status()).coverage === 1);
-  return { runtime, sessions, client, config };
+  return { runtime, sessions, client, config, source, archived };
 }
 
-test('Automatically backfills old and archived sessions, then incrementally embeds new original speech', async t => {
+test('Backfills old active sessions, excludes archives, and incrementally embeds new original speech', async t => {
   const { runtime, sessions, client } = await setup(t);
   assert.equal((await runtime.status()).sessions, 2);
   const calls = client.calls.filter(c => !c.query).length;
@@ -47,6 +49,75 @@ test('Default background batches index all history with a provider that accepts 
   assert.equal(runtime.lastError, null);
 });
 
+test('Archive/deletion removes stale RAG and summary sources; unarchive reuses paid vectors and receipts', async t => {
+  const { runtime, sessions, archived, client } = await setup(t);
+  const batch = await runtime.db.call('memoryBatch', runtime.config, 8000);
+  await runtime.db.call('commitMemoryDocument', 0, [], batch.receipts, runtime.config);
+  assert.equal((await runtime.memory.status()).pending, 0);
+  const paid = client.calls.filter(call => !call.query).length;
+  archived.add('ancient'); sessions.delete('other');
+  // Archive filtering applies even before the next full reconciliation.
+  assert.ok(!(await runtime.recall('蓝鲸')).some(hit => hit.sessionId === 'ancient'));
+  assert.ok(!(await runtime.keywordRecall('部署')).some(hit => hit.sessionId === 'ancient'));
+  await runtime.scan(); await until(() => !runtime.pumpRunning);
+  assert.equal((await runtime.status()).sessions, 0);
+  assert.equal((await runtime.status()).chunks, 0);
+  assert.equal((await runtime.memory.status()).total, 0);
+  assert.deepEqual(await runtime.recall('蓝鲸'), []);
+  assert.deepEqual(await runtime.keywordRecall('旧话'), []);
+  assert.equal(await runtime.db.call('validMemoryReceipts', batch.receipts, runtime.config), false);
+  archived.delete('ancient'); await runtime.scan(); await until(() => !runtime.pumpRunning);
+  assert.equal((await runtime.status()).sessions, 1);
+  assert.equal((await runtime.status()).coverage, 1);
+  assert.equal((await runtime.memory.status()).pending, 0);
+  assert.equal(client.calls.filter(call => !call.query).length, paid);
+  assert.ok((await runtime.recall('蓝鲸')).some(hit => hit.sessionId === 'ancient'));
+});
+
+test('Failed, malformed or live-only listings cannot purge persisted history', async t => {
+  const { runtime, source } = await setup(t);
+  source.listSessions = async () => { throw new Error('offline'); };
+  await assert.rejects(runtime.scan(), /offline/);
+  assert.equal((await runtime.status()).sessions, 2);
+  source.listSessions = async () => [{ header: { id: 'ancient' } }, {}];
+  await assert.rejects(runtime.scan(), /会话列表格式/);
+  assert.equal((await runtime.status()).sessions, 2);
+  source.listSessions = async () => [];
+  runtime.canPruneMissing = () => false;
+  await runtime.scan();
+  assert.equal((await runtime.status()).sessions, 2);
+  runtime.canPruneMissing = () => true;
+  await runtime.scan();
+  assert.equal((await runtime.status()).sessions, 0);
+});
+
+test('A stale session read cannot restore a deleted session after reconciliation', async t => {
+  const { runtime, sessions, source } = await setup(t);
+  const originalRead = source.readSession;
+  let finish;
+  source.readSession = id => id === 'ancient'
+    ? new Promise(resolve => { finish = () => resolve(snapshot('ancient', ['删除前已开始读取的新增内容'])); }) : originalRead(id);
+  runtime.markDirty('ancient'); await until(() => Boolean(finish));
+  sessions.delete('ancient'); await runtime.scan();
+  finish(); await until(() => !runtime.pumpRunning);
+  assert.equal((await runtime.status()).sessions, 1);
+  assert.deepEqual(await runtime.keywordRecall('删除前'), []);
+  assert.equal((await runtime.memory.status()).total, 1);
+});
+
+test('A live session created during listing survives reconciliation even if absent from that snapshot', async t => {
+  const { runtime, source, sessions } = await setup(t);
+  const previousList = await source.listSessions();
+  let finish;
+  source.listSessions = () => new Promise(resolve => { finish = () => resolve(previousList); });
+  const scan = runtime.scan(); await until(() => Boolean(finish));
+  sessions.set('new', snapshot('new', ['核对期间刚创建的新会话']));
+  runtime.markDirty('new'); await until(() => !runtime.pumpRunning);
+  finish(); await scan; await until(() => !runtime.pumpRunning);
+  assert.equal((await runtime.status()).sessions, 3);
+  assert.equal((await runtime.keywordRecall('刚创建'))[0].sessionId, 'new');
+});
+
 test('Pre-step automatically injects original snippets without any tool call and excludes visible current events', async t => {
   const { runtime } = await setup(t);
   const handler = preStep(runtime);
@@ -57,7 +128,8 @@ test('Pre-step automatically injects original snippets without any tool call and
   assert.equal(result.messages.length, 2);
   const context = result.messages[1];
   assert.equal(context.source.kind, 'history-rag');
-  assert.ok(context.content[0].text.includes('已归档的原始旧话'));
+  assert.ok(context.content[0].text.includes('另一会话的原始旧话'));
+  assert.ok(!context.content[0].text.includes('归档内容不得检索'));
   assert.ok(!context.content[0].text.includes('多年前的蓝鲸部署记录'));
   assert.equal(decision.messages.length, 1);
 });
@@ -110,7 +182,7 @@ test('A second index writer is rejected; clean disposal releases the lease', asy
   await runtime.close();
   const replacement = track(t, new HistoryRag(config, source));
   await replacement.start();
-  assert.equal((await replacement.status()).sessions, 2);
+  assert.equal((await replacement.status()).sessions, 0);
 });
 
 test('Unreadable sessions remain visible in status and are retried on the next scan', async t => {

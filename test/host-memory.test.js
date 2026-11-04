@@ -17,6 +17,7 @@ test('Installed DSH LLM and Connection generate, edit and inject a durable summa
   const config = await tempConfig(t, { embeddingEndpoint: '', embeddingModel: '', memoryDebounceMs: 0 });
   const ctx = new Context(); new SessionStore(ctx); new SessionQueryEngine(ctx); new HostConnectionService(ctx, [], { isAuthenticated: () => true }); new LlmRuntime(ctx);
   ctx.provide('agents', {}); ctx.provide('agentDefaultModel', { currentSelection: () => ({ provider: 'synthetic', model: 'native-summary' }) });
+  ctx.provide('workspaceRegistry', { archivedSessionIds: ['summary-archived'] });
   const calls = [];
   class Adapter extends LlmAdapter {
     async resolveModel(provider, model) {
@@ -43,6 +44,8 @@ test('Installed DSH LLM and Connection generate, edit and inject a durable summa
   ctx.llm.registerAdapter(['synthetic'], new Adapter());
   const old = ctx.sessions.create('summary-original', { meta: { cwd: process.cwd(), createdAt: 1 } });
   old.append('user/message', createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: '我喜欢用中文聊天' }] }), { surfaceOp: 'append' });
+  const archived = ctx.sessions.create('summary-archived', { meta: { cwd: process.cwd(), createdAt: 2 } });
+  archived.append('user/message', createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: '已归档内容不能进入摘要' }] }), { surfaceOp: 'append' });
   track(t, { close: () => ctx.fiber.dispose() });
   await ctx.plugin(plugin, config).await();
   const handler = ctx.connection.createSharedFetchHandler('/api'); const peer = ctx.connection.browserPeer;
@@ -61,6 +64,7 @@ test('Installed DSH LLM and Connection generate, edit and inject a durable summa
   assert.deepEqual(calls.map(({ maxTokens, reasoningEffort }) => [maxTokens, reasoningEffort]), [[32768, 'high']]);
   assert.equal(calls[0].toolHistory, undefined);
   assert.equal(calls[0].messages.length, 1); assert.equal(calls[0].messages[0].role, 'user');
+  assert.ok(!calls[0].messages[0].content[0].text.includes('已归档内容不能进入摘要'));
   assert.match(calls[0].system, /4500 字符为目标.*上限 6000/);
   assert.match(calls[0].system, /局部变更/);
   assert.equal((await rpc('status')).value.memory.usage.today.inputTokens, 120);

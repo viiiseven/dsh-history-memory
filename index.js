@@ -13,9 +13,14 @@ export const inject = ['sessionQuery', 'agents'];
 export async function apply(ctx, input = {}) {
   const config = resolveConfig(input);
   const logger = typeof ctx.logger === 'function' ? ctx.logger(name) : console;
-  const runtime = new HistoryRag(config, ctx.sessionQuery, { report: ({ stage, code }) => {
-    logger.warn?.(`对话历史 RAG：${stage} ${code}；聊天继续，可用插件 CLI 查看索引状态。`);
-  } });
+  const runtime = new HistoryRag(config, ctx.sessionQuery, {
+    // Archive membership belongs to WorkspaceRegistry, not SessionHeader.
+    archivedSessionIds: () => ctx.get('workspaceRegistry')?.archivedSessionIds || [],
+    canPruneMissing: () => Boolean(ctx.get('sessionPersistence')),
+    report: ({ stage, code }) => {
+      logger.warn?.(`对话历史 RAG：${stage} ${code}；聊天继续，可用插件 CLI 查看索引状态。`);
+    },
+  });
   ctx.effect(() => () => runtime.close());
   ctx.on('agent/pre-step', preStep(runtime), { prepend: true });
   ctx.on('agent/request', async (_payload, next) => {
