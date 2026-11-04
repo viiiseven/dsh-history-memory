@@ -11,7 +11,7 @@ const sdkRoot = process.env.HISTORY_RAG_TEST_SDK;
 
 test('Installed DSH LLM and Connection generate, edit and inject a durable summary using the default chat model', { skip: !sdkRoot }, async t => {
   const sdk = name => import(pathToFileURL(join(sdkRoot, '@deepseek-ai', name, 'lib', 'index.js')).href);
-  const [{ Context }, { SessionStore }, { SessionQueryEngine }, { HostConnectionService }, { LlmRuntime, LlmAdapter, createUserMessage }] = await Promise.all([
+  const [{ Context }, { SessionStore, Session }, { SessionQueryEngine }, { HostConnectionService }, { LlmRuntime, LlmAdapter, createUserMessage, createSystemMessage, createAssistantMessage }] = await Promise.all([
     sdk('cordis'), sdk('dsh-session'), sdk('dsh-session-query'), sdk('dsh-client-connection'), sdk('dsh-llm'),
   ]);
   const config = await tempConfig(t, { embeddingEndpoint: '', embeddingModel: '', memoryDebounceMs: 0 });
@@ -78,11 +78,47 @@ test('Installed DSH LLM and Connection generate, edit and inject a durable summa
   assert.equal((await rpc('memory', {}, { principal: { kind: 'guest' } })).status, 403);
   const chat = ctx.sessions.create('summary-new-chat', { meta: { cwd: process.cwd() } });
   const input = createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: '你好' }] });
-  const result = await ctx.waterfall('agent/pre-step', { agent: { session: chat }, messages: [input], signal: new AbortController().signal }, async () => ({ kind: 'enter', messages: [input] }));
+  const signal = new AbortController().signal;
+  const step = (session, messages, turn, stepNumber) => ctx.waterfall('agent/pre-step', {
+    agent: { session }, messages, signal, turn, step: stepNumber,
+  }, async () => ({ kind: 'enter', messages }));
+  const result = await step(chat, [input], 1, 1);
   const summary = result.messages.find(m => m.source?.kind === 'history-rag-memory'); assert.ok(summary);
   assert.ok(summary.content[0].text.includes('手动修订'));
-  chat.append('user/message', summary, { surfaceOp: 'append' });
-  await until(async () => (await db.call('memoryCounts')).total === 1);
+  const send = async session => {
+    const call = await ctx.llm.prepareCall({ provider: 'synthetic', model: 'picked-summary', maxTokens: 32768 }, signal);
+    const messages = Object.freeze(session.deriveMessages());
+    for await (const _chunk of call.stream(Object.freeze({ ...call.config, messages, sessionId: session.id, signal }))) { /* drain */ }
+    return calls.at(-1).messages;
+  };
+  const hasSummary = messages => messages.some(m => m.source?.kind === 'history-rag-memory');
+  chat.append('system/message', { turn: 1, step: 1, message: createSystemMessage('系统提示') }, { surfaceOp: 'append' });
+  for (const message of result.messages) chat.append('user/message', message, { surfaceOp: 'append' });
+  assert.ok(hasSummary(await send(chat)));
+  chat.append('assistant/message', { turn: 1, step: 1, stream: [], message: createAssistantMessage({
+    source: { provider: 'synthetic', model: 'picked-summary' }, content: [{ type: 'text', text: '已回复' }],
+  }) }, { surfaceOp: 'append' });
+  await until(() => !hasSummary(chat.deriveMessages()));
+  const wake = createUserMessage({ source: { kind: 'schedule' }, content: [{ type: 'text', text: '定时唤醒' }] });
+  const later = await step(chat, [wake], 2, 1);
+  assert.deepEqual(later.messages, [wake]);
+  chat.append('user/message', wake, { surfaceOp: 'append' });
+  assert.ok(!hasSummary(await send(chat)));
+  const snapshot = await ctx.sessionQuery.readSession(chat.id);
+  const replayed = Session.create(chat.id, snapshot.events, snapshot.session, snapshot.inheritedEventCount);
+  assert.ok(!hasSummary(await send(replayed)));
+  assert.ok(snapshot.events.some(e => e.type === 'user/message' && e.data.id === summary.id));
+
+  // Before an in-step retry (or overflow compaction), a prior summary must
+  // already be gone by the time inner error handlers see the session.
+  const retryChat = ctx.sessions.create('summary-retry');
+  retryChat.append('user/message', input, { surfaceOp: 'append' });
+  retryChat.append('user/message', summary, { surfaceOp: 'append' });
+  await ctx.waterfall('agent/request-error', { agent: { session: retryChat }, turn: 1, step: 1, signal }, () => {
+    assert.ok(!hasSummary(retryChat.deriveMessages()));
+    return { kind: 'retry' };
+  });
+  assert.ok(!hasSummary(await send(retryChat)));
 });
 
 test('Native summary parser rejects incomplete model output and excludes reasoning blocks', async () => {

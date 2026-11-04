@@ -65,21 +65,24 @@ test('Empty, oversized and timed-out generations preserve the saved summary and 
   }
 });
 
-test('Summary injection needs no Embedding, survives replay without duplication, and is restored after compression', async t => {
+test('Only the opening user turn receives a summary, even if later context has been compressed', async t => {
   const { runtime, config } = await setup(t);
   await runtime.memory.save({ text: '偏好中文；正在开发插件。', autoUpdate: false, expectedRevision: 0 });
-  let visible = [];
-  const agent = { session: { id: 'new-chat', header: {}, surface: { nodes: [] }, deriveMessages: () => visible } };
+  let requestHeader;
+  const agent = { session: { id: 'new-chat', header: {}, surface: { nodes: [] }, eventAt() {}, append() {}, requestHeader: () => requestHeader } };
   const input = message('你好'); const decision = { kind: 'enter', messages: [input] };
-  const run = () => preStep(runtime)({ agent, messages: [input] }, async () => decision);
-  const first = await run(); assert.equal(first.messages.length, 2);
+  const run = (turn, step) => preStep(runtime)({ agent, messages: [input], turn, step }, async () => decision);
+  const first = await run(1, 1); assert.equal(first.messages.length, 2);
   const injected = first.messages[1]; assert.equal(injected.source.kind, 'history-rag-memory');
   assert.ok(injected.content[0].text.includes('偏好中文'));
   assert.equal(eventText({ type: 'user/message', data: injected }, config), null);
-  visible = [JSON.parse(JSON.stringify(injected))]; assert.equal((await run()).messages.length, 1);
-  visible = [message('之前的信息已压缩', 'compaction')]; assert.equal((await run()).messages.length, 2);
+  assert.equal((await run(1, 2)).messages.length, 1);
+  assert.equal((await run(2, 1)).messages.length, 1);
+  requestHeader = {};
+  assert.equal((await run(1, 1)).messages.length, 1);
+  requestHeader = undefined;
   runtime.recall = async () => { throw new Error('retrieval unavailable'); };
-  assert.equal((await run()).messages[1].source.kind, 'history-rag-memory');
+  assert.equal((await run(1, 1)).messages[1].source.kind, 'history-rag-memory');
 });
 
 test('Summary pending sources obey explicit session/workspace exclusions and deduplicate fork copies', async t => {

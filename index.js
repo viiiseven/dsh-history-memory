@@ -22,8 +22,16 @@ export async function apply(ctx, input = {}) {
     runtime.memory.observeTarget(resolved);
     return resolved;
   }, { prepend: true });
+  ctx.on('agent/request-error', ({ agent, turn, step }, next) => {
+    runtime.memory.retire(agent?.session, turn, step);
+    return next();
+  }, { prepend: true });
   ctx.on('session/event', (session, event) => {
     if (eventText(event, config)) runtime.markDirty(session.id);
+    if ((event.type === 'assistant/message' || event.type === 'assistant/attempt') && event.data.turn === 1 && event.data.step === 1) {
+      // Session rejects reentrant appends during event publication.
+      queueMicrotask(() => runtime.memory.retire(session, 1, 1));
+    }
   });
   await runtime.start();
   ctx.inject(['llm'], llmCtx => llmCtx.effect(() => {

@@ -233,7 +233,7 @@ body[data-ds-dark-theme] .hrag{color-scheme:dark;color:var(--dsw-alias-label-pri
           updateFeedback ? h('p', { className: 'hr-error', role: 'alert' }, updateFeedback) : null),
         h('form', { className: 'hr-card', 'aria-label': '常驻记忆摘要设置', onSubmit: e => { e.preventDefault(); performMemory('memory-save'); } },
           h('h3', null, '常驻记忆摘要'),
-          h('p', { className: 'hr-note' }, '一份跨会话共享的摘要。新会话首次发送时自动带入；同会话不重复，压缩移出后会补回。'),
+          h('p', { className: 'hr-note' }, '一份跨会话共享的摘要，只随新会话首轮的第一次模型请求发送。'),
           h('label', { className: 'hr-field', htmlFor: 'hr-memory-model' }, '摘要生成模型'),
           h('div', { className: 'hr-models' },
             h('select', { id: 'hr-memory-model', value: memoryModel, disabled: !memory || Boolean(memoryBusy), onChange: e => { setMemoryModel(e.target.value); editMemory(); } },

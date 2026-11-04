@@ -1,6 +1,6 @@
 {
   "name": "dsh-history-rag",
-  "version": "0.7.5",
+  "version": "0.7.6",
   "description": "Automatically embed DSH conversation history and retrieve original text before every chat turn.",
   "type": "module",
   "main": "./index.js",
