@@ -127,3 +127,36 @@ test('Failed summary exposes a bounded diagnostic while preserving original pend
   assert.ok(status.startedAt > 0 && status.finishedAt >= status.startedAt);
   assert.ok(!JSON.stringify(status).includes('private'));
 });
+
+test('A truncated summary retries with a shorter target and marks only the successful subset as processed', async t => {
+  const { runtime } = await setup(t);
+  const calls = [];
+  runtime.memory.setGenerator(generator(async input => {
+    calls.push(input);
+    if (calls.length === 1) throw Object.assign(new Error('truncated'), { code: 'SUMMARY_TRUNCATED' });
+    return '更简洁的完整摘要';
+  }));
+  await runtime.memory.kick();
+  assert.deepEqual(calls.map(({ chunks }) => chunks.length), [2, 1]);
+  assert.ok(calls[1].maxChars < calls[0].maxChars);
+  assert.equal((await runtime.memory.read()).text, '更简洁的完整摘要');
+  assert.equal((await runtime.memory.status()).pending, 1);
+});
+
+test('When both attempts truncate, the saved summary and pending fragments survive the retry cooldown', async t => {
+  const { runtime } = await setup(t);
+  await runtime.memory.save({ text: '已保存的摘要', autoUpdate: true, expectedRevision: 0 });
+  let calls = 0;
+  runtime.memory.setGenerator(generator(async () => {
+    calls++;
+    throw Object.assign(new Error('truncated'), { code: 'SUMMARY_TRUNCATED' });
+  }));
+  await runtime.memory.kick();
+  await runtime.memory.kick();
+  assert.equal(calls, 2);
+  assert.equal((await runtime.memory.read()).text, '已保存的摘要');
+  const status = await runtime.memory.status();
+  assert.equal(status.pending, 2);
+  assert.equal(status.lastError.code, 'SUMMARY_TRUNCATED');
+  assert.ok(status.retryAt >= status.lastError.time + 300000);
+});

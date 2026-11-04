@@ -19,10 +19,18 @@ test('Installed DSH LLM and Connection generate, edit and inject a durable summa
   ctx.provide('agents', {}); ctx.provide('agentDefaultModel', { currentSelection: () => ({ provider: 'synthetic', model: 'native-summary' }) });
   const calls = [];
   class Adapter extends LlmAdapter {
-    async resolveModel(provider, model) { return { provider, id: model, name: model, toolUpdate: 'addition-only' }; }
+    async resolveModel(provider, model) {
+      return { provider, id: model, name: model, toolUpdate: 'addition-only', reasoning: {
+        defaultEffort: 'high', efforts: [{ id: 'high', name: 'High' }, { id: 'off', name: 'Off' }],
+      } };
+    }
     async listModels(provider) { return [{ provider, id: 'native-summary', name: '默认摘要模型' }, { provider, id: 'picked-summary', name: '指定摘要模型' }]; }
     async *stream(options) {
       calls.push(options);
+      if (options.reasoningEffort !== 'off') {
+        yield { type: 'finish', reason: { kind: 'max-tokens' } };
+        return;
+      }
       yield { type: 'reasoning-delta', index: 0, text: '此内容不得进入摘要' };
       yield { type: 'text-delta', index: 1, text: '用户偏好中文。' };
       yield { type: 'block-end', index: 1, block: { type: 'text', text: '用户偏好中文。' } };
@@ -47,6 +55,7 @@ test('Installed DSH LLM and Connection generate, edit and inject a durable summa
   await rpc('memory-update');
   await until(async () => (await rpc('memory')).value?.text === '用户偏好中文。');
   assert.equal(calls[0].model, 'native-summary'); assert.equal(calls[0].purpose, 'history-rag-summary');
+  assert.equal(calls[0].reasoningEffort, 'off');
   assert.equal(calls[0].toolHistory, undefined);
   assert.equal(calls[0].messages.length, 1); assert.equal(calls[0].messages[0].role, 'user');
   assert.ok(calls[0].system.includes('摘要正文最多'));

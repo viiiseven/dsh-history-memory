@@ -4,6 +4,11 @@
 
 **全部历史文字对话 → 原文切块 → Embedding → SQLite → 每个新用户输入前自动向量检索 → 注入命中原文。**
 
+## 0.7.2：摘要截断恢复
+
+- 生成摘要时，优先使用所选 DSH 模型支持的关闭或低推理档位，将更多输出预算留给摘要正文。
+- 达到输出上限时，自动缩小批次并缩短摘要目标后重试一次。只标记成功写入摘要的片段。两次均截断时保留现有摘要和待处理片段，5 分钟后再试。
+
 ## 0.7.1：摘要请求修复
 
 - 修复原生 DeepSeek 等支持工具历史更新的模型无法生成摘要的问题：辅助摘要请求不携带 `toolHistory`，不再误传空数组；系统提示词使用 DSH 原生 `system` 字段。
@@ -141,7 +146,7 @@ Key 输入框默认隐藏；已有 Key 不会从服务端返回界面。留空�
 
 ## 安装
 
-使用 DSH 插件管理器安装项目目录或 `dsh-history-rag-0.7.1.tgz`，启用后完全退出并重新打开 DSH。以桌面版 profile 为例：
+使用 DSH 插件管理器安装项目目录或 `dsh-history-rag-0.7.2.tgz`，启用后完全退出并重新打开 DSH。以桌面版 profile 为例：
 
 ```powershell
 dsh plugin --profile desktop add "安装包或本项目的绝对路径"
@@ -181,7 +186,7 @@ dsh plugin --profile desktop add "安装包或本项目的绝对路径"
 
    ```powershell
    dsh plugin --profile desktop add "本项目的绝对路径"
-   # 也可以将参数替换为 dsh-history-rag-0.7.1.tgz 的绝对路径
+   # 也可以将参数替换为 dsh-history-rag-0.7.2.tgz 的绝对路径
    ```
 
    完全退出并重新打开 DSH。若命令行中没有 `dsh`，可在 DSH 插件管理的添加入口使用本地安装来源；桌面 GUI 安装流程尚未实机验收。

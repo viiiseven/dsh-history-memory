@@ -148,7 +148,7 @@ body[data-ds-dark-theme] .hrag{color-scheme:dark;color:var(--dsw-alias-label-pri
       const memoryState = status?.memory;
       const memoryFailure = memoryState?.lastError;
       const memoryFailureText = memoryFailure ? ({
-        SUMMARY_TRUNCATED: '模型输出达到长度上限，摘要未完成；请调整摘要生成上限或选择其他模型。',
+        SUMMARY_TRUNCATED: '缩小批次并缩短摘要目标后，模型仍达到输出上限。已保留原摘要，5 分钟后自动重试。',
         SUMMARY_TOO_LONG: '模型返回的摘要超过字符上限，已保留原摘要。', SUMMARY_EMPTY: '模型未返回摘要正文，已保留原摘要。',
         ABORTED: '摘要请求已取消或超时。', TIMEOUT: '摘要模型响应超时。', TRANSPORT: '摘要模型连接失败，请检查 DSH 中该模型的连接。',
         NO_ADAPTER: '摘要模型的服务商尚未启用，请在 DSH 中检查模型配置。',
