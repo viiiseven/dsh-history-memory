@@ -16,7 +16,7 @@ async function setup(t, override) {
   const { Simulate } = require('react-dom/test-utils');
   const dom = new JSDOM('<!doctype html><html><head></head><body><div id="root"></div></body></html>', { url: 'http://localhost/', runScripts: 'outside-only' });
   globalThis.window = dom.window; globalThis.document = dom.window.document; globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-  const state = { apiVersion: 2, embeddingEndpoint: 'https://example.com/v1/embeddings', embeddingModel: 'test-model', key: { configured: true, source: 'file' }, locks: {}, revision: 'rev-1' };
+  const state = { apiVersion: 3, embeddingEndpoint: 'https://example.com/v1/embeddings', embeddingModel: 'test-model', key: { configured: true, source: 'file' }, locks: {}, revision: 'rev-1' };
   const memory = { text: '偏好中文，正在开发项目 A。', revision: 1, autoUpdate: true, updatedAt: 1, source: 'automatic' };
   let status = { configured: true, indexing: true, chunks: 80, embeddedChunks: 40, pending: 40, progress: { phase: 'indexing', total: 20, completed: 10 }, state: {} };
   const calls = [], dispose = [];
@@ -119,7 +119,9 @@ test('Summary editor saves text with its revision and preserves a rejected draft
     ? { ok: false, error: { message: '摘要已在后台更新，请合并保存' } } : null);
   await input('hr-memory', '手动更新后的记忆'); await click('保存摘要');
   const saved = calls.find(c => c.action === 'memory-save').payload;
-  assert.deepEqual(structuredClone(saved), { text: '手动更新后的记忆', autoUpdate: true, expectedRevision: 1, modelSelection: null });
+  const { preferences, lockedIds, ...core } = structuredClone(saved);
+  assert.deepEqual(core, { text: '手动更新后的记忆', autoUpdate: true, expectedRevision: 1, modelSelection: null });
+  assert.equal(preferences.memoryBatchTokens, 8000); assert.deepEqual(lockedIds, []);
   await input('hr-memory', '冲突草稿'); await click('保存摘要');
   assert.equal(dom.window.document.getElementById('hr-memory').value, '冲突草稿');
   assert.ok(dom.window.document.body.textContent.includes('合并保存'));
@@ -183,4 +185,36 @@ test('Summary failures show the native error code and status instead of only a g
     pending: 2, total: 2, processed: 0, retryAt: Date.now() + 60000, lastError: { code: 'ACCOUNT_TOKEN_INVALID', status: 401 } } } } : null);
   assert.ok(dom.window.document.body.textContent.includes('登录状态失效'));
   assert.ok(dom.window.document.body.textContent.includes('ACCOUNT_TOKEN_INVALID · HTTP 401'));
+});
+
+test('Summary budgets and locks save with the text revision; actual usage and unknown usage stay distinct', { skip: !modules }, async t => {
+  const usage = { requests: 3, failures: 1, inputTokens: 100, outputTokens: 60, reasoningTokens: 40, cacheReadTokens: 20,
+    budgetTokens: 33000, unknownRequests: 1, elapsedMs: 2000, details: { reasoningTokens: true, cacheReadTokens: true } };
+  const { dom, calls, input, click, React } = await setup(t, action => {
+    if (action === 'memory') return { ok: true, value: { text: '用户偏好中文', autoUpdate: true, revision: 1,
+      entries: [{ id: 'entry-1', text: '用户偏好中文', locked: false, sources: [{ sessionId: 'chat-a', seq: 2 }] }], preferences: { memoryDailyTokens: 50000 } } };
+    if (action === 'status') return { ok: true, value: { state: {}, memory: { revision: 1, unit: 'messages', pending: 1, total: 2, processed: 1,
+      usage: { today: usage, run: usage } } } };
+  });
+  await input('hr-memoryDailyTokens', '100000');
+  await input('hr-memoryMaxWaitMs', '5');
+  const checkbox = dom.window.document.querySelector('.hr-entry input');
+  await React.act(() => checkbox.click());
+  await click('保存摘要');
+  const saved = calls.find(call => call.action === 'memory-save').payload;
+  assert.equal(saved.preferences.memoryDailyTokens, 100000); assert.equal(saved.preferences.memoryMaxWaitMs, 300000);
+  assert.deepEqual(Array.from(saved.lockedIds), ['entry-1']);
+  assert.ok(dom.window.document.querySelector('[aria-label="摘要专属用量"]'));
+  assert.ok(dom.window.document.body.textContent.includes('实际用量未知'));
+  assert.ok(dom.window.document.body.textContent.includes('缓存读取 token：20'));
+});
+
+test('Version restoration is reviewable and disabled while a draft is unsaved', { skip: !modules }, async t => {
+  const { dom, input, click, button, calls } = await setup(t, action => action === 'memory-history'
+    ? { ok: true, value: [{ revision: 0, time: 1, source: 'manual', text: '先前摘要' }] } : null);
+  await click('查看修改历史');
+  assert.ok(dom.window.document.body.textContent.includes('先前摘要'));
+  await input('hr-memory', '新的未保存草稿');
+  assert.equal(button('恢复版本 0').disabled, true);
+  assert.ok(!calls.some(call => call.action === 'memory-restore'));
 });

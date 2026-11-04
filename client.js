@@ -18,8 +18,12 @@ body[data-ds-dark-theme] .hrag{color-scheme:dark;color:var(--dsw-alias-label-pri
 .hrag .hr-section-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:16px}.hrag .hr-section-head h3{margin:0}.hrag .hr-section-head button{padding:6px 10px;font-size:12px}.hrag .hr-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:17px 0 22px}.hrag .hr-stat{padding:13px;border-radius:9px;background:var(--hr-bg)}.hrag .hr-stat strong{font-size:24px;font-weight:600;display:block;letter-spacing:-.5px;line-height:1.3}.hrag .hr-stat span{color:var(--hr-muted);font-size:12px}.hrag .hr-progress-label{display:flex;justify-content:space-between;gap:12px;font-size:13px;margin:15px 0 6px}.hrag progress{display:block;width:100%;height:7px;border:0;overflow:hidden;border-radius:10px;accent-color:var(--hr-accent);background:var(--hr-bg)}.hrag progress::-webkit-progress-bar{background:var(--hr-bg);border-radius:10px}.hrag progress::-webkit-progress-value{background:var(--hr-accent);border-radius:10px}.hrag .hr-state{font-size:13px;display:flex;gap:8px;align-items:center}.hrag .hr-dot{width:7px;height:7px;border-radius:100%;background:var(--hr-accent);flex-shrink:0}.hrag details{font-size:12px;color:var(--hr-muted);margin-top:14px}.hrag summary{cursor:pointer}.hrag code{word-break:break-all;font-size:11px}.hrag .hr-footer{margin-top:15px;color:var(--hr-muted);font-size:12px}.hrag .hr-error{color:#b34a45}
 @media(max-width:560px){.hrag .hr-card{padding:16px}.hrag .hr-stats{gap:6px}.hrag .hr-stat{padding:10px}.hrag .hr-stat strong{font-size:21px}.hrag .hr-head{align-items:flex-start}.hrag h2{font-size:19px}.hrag .hr-actions button{flex:1}}
 .hrag input[type=url],.hrag input[type=text],.hrag input[type=password],.hrag textarea,.hrag select,.hrag option,.hrag optgroup{background:var(--hr-input);color:inherit}.hrag input::placeholder,.hrag textarea::placeholder{color:var(--hr-muted);opacity:.85}.hrag .hr-error,.hrag .hr-feedback[data-error=true]{color:var(--hr-error)}
+.hrag .hr-budget{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:12px 0}.hrag input[type=number]{width:100%;display:block;border:1px solid var(--hr-line);border-radius:8px;padding:9px;margin-top:6px;background:var(--hr-input);color:inherit;font:inherit}.hrag .hr-version{border-top:1px solid var(--hr-line);padding-top:10px;margin-top:10px}.hrag .hr-version pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;max-height:220px;overflow:auto}.hrag .hr-usage{width:100%;border-collapse:collapse;font-size:12px;margin-top:12px}.hrag .hr-usage th,.hrag .hr-usage td{text-align:left;padding:7px;border-bottom:1px solid var(--hr-line)}.hrag .hr-entry{align-items:flex-start;white-space:pre-wrap;overflow-wrap:anywhere}
+.hrag .hr-budget label.hr-field{margin-top:0}
 `;
     const number = value => Number(value || 0).toLocaleString('zh-CN');
+    const memoryDefaults = { memoryMaxChars: 6000, memoryMaxTokens: 32768, memoryBatchTokens: 8000, memoryTriggerTokens: 6000,
+      memoryMaxWaitMs: 600000, memoryContextTokens: 65536, memoryDailyTokens: 0, memoryRetryLimit: 2 };
     const errors = { HTTP_401: 'Embedding 鉴权失败，请检查 Key', HTTP_403: 'Embedding 接口拒绝访问', HTTP_429: 'Embedding 接口限流或额度不足', NETWORK_ERROR: '无法连接 Embedding 服务', ABORTED: 'Embedding 请求已取消或超时', DIMENSION_MISMATCH: '向量维度不一致', KEY_FILE_ERROR: '无法读取本地 Key 文件' };
 
     function SettingsPage({ call }) {
@@ -43,6 +47,9 @@ body[data-ds-dark-theme] .hrag{color-scheme:dark;color:var(--dsw-alias-label-pri
       const [memoryDirty, setMemoryDirty] = useState(false);
       const [memoryBusy, setMemoryBusy] = useState('');
       const [memoryFeedback, setMemoryFeedback] = useState(null);
+      const [memoryPreferences, setMemoryPreferences] = useState(memoryDefaults);
+      const [memoryLocks, setMemoryLocks] = useState([]);
+      const [memoryHistory, setMemoryHistory] = useState(null);
       const [updateBusy, setUpdateBusy] = useState(false);
       const [updateFeedback, setUpdateFeedback] = useState('');
       const memoryDirtyRef = useRef(false);
@@ -62,7 +69,7 @@ body[data-ds-dark-theme] .hrag{color-scheme:dark;color:var(--dsw-alias-label-pri
       };
       const load = async () => {
         try { const value = await invoke('settings'); if (mounted.current) {
-          accept(value); setFeedback(null); backendReady.current = value.apiVersion >= 2;
+          accept(value); setFeedback(null); backendReady.current = value.apiVersion >= 3;
           if (!backendReady.current) setMemoryFeedback({ error: true, text: '设置页已更新，但插件后台仍是旧版。请从「应用 → 退出」完全退出 DSH 后重新打开，再加载摘要。' });
           else if (memoryRevisionRef.current === null) { loadMemory(); loadMemoryModels(); }
         } }
@@ -70,6 +77,8 @@ body[data-ds-dark-theme] .hrag{color-scheme:dark;color:var(--dsw-alias-label-pri
       };
       const acceptMemory = value => {
         setMemory(value); setMemoryText(value.text); setMemoryAuto(value.autoUpdate);
+        setMemoryPreferences({ ...memoryDefaults, ...value.preferences });
+        setMemoryLocks((value.entries || []).filter(entry => entry.locked).map(entry => entry.id));
         setMemoryModel(value.modelSelection ? JSON.stringify([value.modelSelection.provider, value.modelSelection.model]) : '');
         memoryRevisionRef.current = value.revision; memoryDirtyRef.current = false; setMemoryDirty(false);
       };
@@ -135,14 +144,29 @@ body[data-ds-dark-theme] .hrag{color-scheme:dark;color:var(--dsw-alias-label-pri
         try {
           const selected = memoryModel ? JSON.parse(memoryModel) : null;
           const result = await invoke(action, action === 'memory-save' ? { text: memoryText, autoUpdate: memoryAuto, expectedRevision: memory.revision,
-            modelSelection: selected ? { provider: selected[0], model: selected[1] } : null } : {});
+            modelSelection: selected ? { provider: selected[0], model: selected[1] } : null,
+            preferences: memoryPreferences, lockedIds: memoryLocks } : {});
           if (!mounted.current) return;
           if (action === 'memory-save') acceptMemory(result);
           const currentStatus = await invoke('status');
           if (!mounted.current) return;
           setStatus(currentStatus);
-          setMemoryFeedback({ error: false, text: action === 'memory-save' ? '摘要已保存，新会话会自动带入。' : '已请求在后台逐批整理待处理片段，可继续聊天。' });
+          setMemoryFeedback({ error: false, text: action === 'memory-save' ? '摘要及预算已保存，新会话会自动带入。' : '已请求在后台连续整理待处理原文，仍遵守每日预算。' });
         } catch (error) { if (mounted.current) setMemoryFeedback({ error: true, text: error.message || '摘要操作失败，草稿已保留' }); }
+        finally { if (mounted.current) setMemoryBusy(''); }
+      };
+      const loadHistory = async () => {
+        setMemoryBusy('history');
+        try { const value = await invoke('memory-history'); if (mounted.current) setMemoryHistory(value); }
+        catch (error) { if (mounted.current) setMemoryFeedback({ error: true, text: error.message }); }
+        finally { if (mounted.current) setMemoryBusy(''); }
+      };
+      const restoreMemory = async revision => {
+        if (memoryDirty || memoryBusy) return;
+        setMemoryBusy('restore');
+        try { const value = await invoke('memory-restore', { revision, expectedRevision: memory.revision });
+          if (mounted.current) { acceptMemory(value); setMemoryHistory(null); setMemoryFeedback({ error: false, text: '已恢复所选版本，原文处理进度不回退。' }); }
+        } catch (error) { if (mounted.current) setMemoryFeedback({ error: true, text: error.message }); }
         finally { if (mounted.current) setMemoryBusy(''); }
       };
       const memoryState = status?.memory;
@@ -150,20 +174,29 @@ body[data-ds-dark-theme] .hrag{color-scheme:dark;color:var(--dsw-alias-label-pri
       const memoryFailureText = memoryFailure ? ({
         SUMMARY_TRUNCATED: `模型达到摘要输出上限${memoryFailure.maxTokens ? `（${number(memoryFailure.maxTokens)} token）` : ''}。此批已停止自动重试，原摘要和待处理片段已保留。`,
         SUMMARY_INPUT_TOO_LARGE: '原文片段超过单批输入上限，待处理片段已保留。',
-        SUMMARY_TOO_LONG: `尝试精简后仍超过 ${number(memoryState.maxChars)} 字符。此批已暂停自动重试，原摘要和待处理片段已保留。`,
+        SUMMARY_CAPACITY: '摘要容量不足，本批变更已暂存。可以提高容量后继续，不必重新生成本批变更。',
+        SUMMARY_DAILY_LIMIT: '今日预算不足以开始下一次请求。明日继续，或提高每日预算后保存。',
+        SUMMARY_CONTEXT_BUDGET: '输入与输出预留超过上下文预算。请核对所选模型的上下文容量和输出上限。',
+        SUMMARY_INVALID_PATCH: '模型返回的记忆变更格式无效，已暂停本批自动请求。',
+        SUMMARY_INVALID_SOURCE: '记忆变更缺少有效原文依据，已保留原摘要。',
+        SUMMARY_LOCKED: '模型尝试修改锁定条目，变更未写入。',
+        SUMMARY_PROTECTED: '模型尝试用旧历史覆盖手动修订，变更未写入。',
+        SUMMARY_RESPONSE_TOO_LARGE: '模型返回过多内容，已停止本批自动请求。',
+        SUMMARY_INTERRUPTED: '上次请求被应用退出或异常中断，用量可能已产生。请手动更新以重试。',
+        SUMMARY_EDIT_CONFLICT: '暂存变更与手动编辑冲突，原文与变更均已保留。点击立即更新可按最新摘要重新核对这批原文。',
         SUMMARY_EMPTY: '模型未返回摘要正文，已保留原摘要。',
         ABORTED: '摘要请求已取消或超时。', TIMEOUT: '摘要模型响应超时。', TRANSPORT: '摘要模型连接失败，请检查 DSH 中该模型的连接。',
         NO_ADAPTER: '摘要模型的服务商尚未启用，请在 DSH 中检查模型配置。',
         ACCOUNT_TOKEN_INVALID: 'DSH 账号登录状态失效，请重新登录。', ACCOUNT_QUOTA_EXCEEDED: 'DSH 账号额度不足，请检查账号余额。',
         UNEXPECTED_ERROR: 'DSH 模型适配器处理失败，请检查插件与 DSH 版本。',
       }[memoryFailure.code] || '摘要模型调用失败，请检查 DSH 中所选模型的配置。') : '';
-      const memoryStateText = memoryState?.running ? '正在后台更新摘要…'
+      const memoryStateText = memoryState?.running ? memoryState.phase === 'compact' ? '正在精简已有记忆…' : '正在后台更新记忆条目…'
         : memoryFailure?.code === 'SUMMARY_TRUNCATED' ? '摘要队列已暂停，可调整预算或手动重试。'
-        : memoryFailure?.code === 'SUMMARY_TOO_LONG' ? '摘要队列已暂停，可精简当前摘要后保存，或手动重试。'
         : memoryState?.autoUpdate === false ? '自动更新已暂停，已保存的摘要仍会带入新会话。'
         : memoryState?.retryAt > Date.now() ? '上次摘要更新未完成，稍后会自动重试；已保存的摘要仍可使用。'
+        : memoryFailure ? '后台整理已暂停，已保存的摘要仍可使用。'
         : memoryState?.pending && !memoryState.modelReady ? '等待 DSH 默认聊天模型；你也可以先手动填写摘要。'
-        : memoryState?.pending ? `等待整理 ${number(memoryState.pending)} 个新增原文片段，后台会在对话稳定后更新。`
+        : memoryState?.pending ? `待检查 ${number(memoryState.pending)} 条原文消息，估计 ${number(memoryState.pendingTokens)} token；达到积累量或等待上限后开始。`
         : memoryState?.hasText ? '摘要已就绪，新会话会自动带入。' : '尚无摘要，可手动填写，或等待后台根据历史对话生成。';
       const locks = settings?.locks || {};
       const updates = status?.updates;
@@ -246,24 +279,58 @@ body[data-ds-dark-theme] .hrag{color-scheme:dark;color:var(--dsw-alias-label-pri
             h('button', { type: 'button', disabled: !memory || memoryModelsBusy, onClick: loadMemoryModels }, memoryModelsBusy ? '正在读取…' : '刷新 DSH 模型')),
           h('p', { className: 'hr-note' }, '默认使用最近对话实际选用的模型；尚未聊天时使用 DSH 默认模型。指定模型同样沿用本机 .dsh 的接口和 Key，选择后请保存摘要。'),
           h('label', { className: 'hr-field', htmlFor: 'hr-memory' }, '摘要内容',
-            h('textarea', { id: 'hr-memory', value: memoryText, maxLength: memoryState?.maxChars || 6000,
+            h('textarea', { id: 'hr-memory', value: memoryText, maxLength: memoryPreferences.memoryMaxChars,
               placeholder: '用户背景、偏好、当前进展、约定和待办…', disabled: !memory || Boolean(memoryBusy),
               onChange: e => { setMemoryText(e.target.value); editMemory(); } })),
-          h('div', { className: 'hr-memory-meta' }, h('span', null, memory?.updatedAt ? `更新于 ${new Date(memory.updatedAt).toLocaleString('zh-CN')} · ${memory.source === 'manual' ? '手动保存' : '自动整理'}` : '尚未生成'),
-            h('span', null, `${number(memoryText.length)} / ${number(memoryState?.maxChars || 6000)} 字符${memoryDirty ? ' · 未保存' : ''}`)),
+          h('div', { className: 'hr-memory-meta' }, h('span', null, memory?.updatedAt ? `更新于 ${new Date(memory.updatedAt).toLocaleString('zh-CN')} · ${memory.source === 'manual' ? '手动保存' : memory.source === 'explicit' ? '按用户要求编辑' : '自动整理'}` : '尚未生成'),
+            h('span', null, `${number(memoryText.length)} / ${number(memoryPreferences.memoryMaxChars)} 字符${memoryDirty ? ' · 未保存' : ''}`)),
           h('label', { className: 'hr-check' }, h('input', { id: 'hr-memory-auto', type: 'checkbox', checked: memoryAuto, disabled: !memory || Boolean(memoryBusy),
             onChange: e => { setMemoryAuto(e.target.checked); editMemory(); } }), '后台自动增量更新'),
+          h('details', null, h('summary', null, '更新频率与用量上限'),
+            h('div', { className: 'hr-budget' }, ...[
+              ['memoryDailyTokens', '每日 token 预算（0 为不限）', 0, 100000000, 1],
+              ['memoryTriggerTokens', '积累到多少原文 token 后更新', 0, 64000, 1],
+              ['memoryMaxWaitMs', '少量新增最多等待（分钟）', 0, 1440, 60000],
+              ['memoryBatchTokens', '每批新增原文 token 预算', 256, 64000, 1],
+              ['memoryMaxChars', '摘要容量（字符）', 256, 20000, 1],
+              ['memoryMaxTokens', '单次模型输出上限（token）', 256, 128000, 1],
+              ['memoryContextTokens', '模型上下文预算（token）', 4096, 1000000, 1],
+              ['memoryRetryLimit', '临时故障最多自动重试次数', 0, 5, 1],
+            ].map(([key, label, min, max, divisor]) => h('label', { key, className: 'hr-field', htmlFor: `hr-${key}` }, label,
+              h('input', { id: `hr-${key}`, type: 'number', min, max, step: 1, value: memoryPreferences[key] / divisor,
+                disabled: !memory || Boolean(memoryBusy), onChange: e => { setMemoryPreferences(current => ({ ...current, [key]: Number(e.target.value) * divisor })); editMemory(); } })))),
+            h('p', { className: 'hr-note' }, '输入 token 为保守估算。开始前为输入和最大输出预留每日预算，接口返回实际用量后结算；未返回用量的请求保留预留值。输出上限不代表每次实际用量。保存后生效。')),
+          memory?.entries?.length ? h('details', null, h('summary', null, '条目锁定与原文依据'),
+            h('p', { className: 'hr-note' }, '锁定后后台不能修改。手动修改正文后请先保存，再锁定新条目。'),
+            ...memory.entries.map(entry => h('div', { key: entry.id },
+              h('label', { className: 'hr-check hr-entry' }, h('input', { type: 'checkbox', checked: memoryLocks.includes(entry.id),
+                disabled: Boolean(memoryBusy) || memoryText !== memory.text, onChange: e => { setMemoryLocks(ids => e.target.checked ? [...ids, entry.id] : ids.filter(id => id !== entry.id)); editMemory(); } }), entry.text || '空段落'),
+              entry.sources?.length ? h('p', { className: 'hr-note' }, entry.sources.map(source => `${source.sessionId} · 消息 ${source.seq}`).join('；')) : null))) : null,
           h('p', { className: 'hr-note', role: 'status' }, memoryStateText),
           memoryFailure ? h('p', { className: 'hr-error', role: 'alert' }, `${memoryFailureText}（${memoryFailure.code}${memoryFailure.status ? ` · HTTP ${memoryFailure.status}` : ''}）`) : null,
           memoryState?.running && memoryState.startedAt ? h('p', { className: 'hr-note' }, `本次已等待 ${Math.max(0, Math.floor((Date.now() - memoryState.startedAt) / 1000))} 秒；完成后会自动显示摘要。`) : null,
-          memoryState ? h('p', { className: 'hr-note' }, `已整理 ${number(memoryState.processed)} / ${number(memoryState.total)} 个去重原文片段${memoryState.model ? ` · 摘要模型：${memoryState.model}` : ''}`) : null,
+          memoryState ? h('p', { className: 'hr-note' }, `已检查 ${number(memoryState.processed)} / ${number(memoryState.total)} 条去重原文消息${memoryState.model ? ` · 摘要模型：${memoryState.model}` : ''}`) : null,
+          memoryState?.usage ? h('div', null,
+            h('table', { className: 'hr-usage', 'aria-label': '摘要专属用量' },
+              h('thead', null, h('tr', null, ...['范围', '请求 / 失败', '输入 token', '输出 token', '耗时'].map(label => h('th', { key: label }, label)))),
+              h('tbody', null, ...[['today', '今日'], ['run', '最近一轮']].map(([key, label]) => {
+                const usage = memoryState.usage[key];
+                return h('tr', { key }, h('td', null, label), h('td', null, `${number(usage.requests)} / ${number(usage.failures)}`),
+                  h('td', null, number(usage.inputTokens)), h('td', null, number(usage.outputTokens)), h('td', null, `${number(Math.round(usage.elapsedMs / 1000))} 秒`));
+              }))),
+            h('p', { className: 'hr-note' }, `今日预算占用 ${number(memoryState.usage.today.budgetTokens)} token；${number(memoryState.usage.today.unknownRequests)} 次请求的实际用量未知，已按预留值计入预算。`),
+            h('p', { className: 'hr-note' }, `今日推理 token：${memoryState.usage.today.details.reasoningTokens ? number(memoryState.usage.today.reasoningTokens) : '接口未提供'}；缓存读取 token：${memoryState.usage.today.details.cacheReadTokens ? number(memoryState.usage.today.cacheReadTokens) : '接口未提供'}。明细不重复加到总量中。`)) : null,
           memoryDirty && memoryState && memoryState.revision !== memory?.revision ? h('p', { className: 'hr-error', role: 'alert' }, '后台摘要已更新，当前草稿未被覆盖。请复制草稿，再重新加载摘要后合并保存。') : null,
           h('div', { className: 'hr-actions' },
             h('button', { type: 'submit', className: 'hr-primary', disabled: !memory || Boolean(memoryBusy) }, memoryBusy === 'memory-save' ? '正在保存…' : '保存摘要'),
             h('button', { type: 'button', disabled: !memory || Boolean(memoryBusy) || Boolean(memoryState?.running) || !memoryState?.modelReady || memoryDirty, onClick: () => performMemory('memory-update') }, '立即更新摘要'),
-            h('button', { type: 'button', disabled: Boolean(memoryBusy), onClick: loadMemory }, '重新加载摘要')),
+            h('button', { type: 'button', disabled: Boolean(memoryBusy), onClick: loadMemory }, '重新加载摘要'),
+            h('button', { type: 'button', disabled: !memory || Boolean(memoryBusy), onClick: loadHistory }, '查看修改历史')),
+          memoryHistory ? h('details', { open: true }, h('summary', null, '最近 30 个版本'), ...memoryHistory.map(version => h('div', { className: 'hr-version', key: version.revision },
+            h('p', null, `版本 ${version.revision} · ${new Date(version.time).toLocaleString('zh-CN')}`), h('pre', null, version.text || '空摘要'),
+            h('button', { type: 'button', disabled: memoryDirty || Boolean(memoryBusy) || memory?.revision === version.revision, onClick: () => restoreMemory(version.revision) }, `恢复版本 ${version.revision}`)))) : null,
           memoryFeedback ? h('div', { className: 'hr-feedback', 'data-error': memoryFeedback.error, role: memoryFeedback.error ? 'alert' : 'status' }, memoryFeedback.text) : null,
-          h('p', { className: 'hr-footer' }, '自动更新通过 DSH 调用所选聊天模型，会产生该模型用量；仅处理新增原文，原文 RAG 继续独立工作。')),
+          h('p', { className: 'hr-footer' }, '后台按原文顺序批量检查，只生成必要的记忆变更。聊天模型仅在你直接要求“请记住：…”、“修改记忆：…”或“忘记：…”时可编辑记忆。原文 RAG 独立工作。')),
         h('form', { className: 'hr-card', 'aria-label': 'Embedding 服务设置', onSubmit: e => { e.preventDefault(); perform('save'); } },
           h('h3', null, 'Embedding 服务'),
           field('接口地址', 'hr-endpoint', endpoint, value => { setEndpoint(value); setModels(null); setFeedback(null); }, 'https://example.com/v1', !settings || Boolean(locks.embeddingEndpoint) || Boolean(busy),

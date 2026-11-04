@@ -31,14 +31,12 @@ test('Installed DSH LLM and Connection generate, edit and inject a durable summa
         yield { type: 'finish', reason: { kind: 'max-tokens' } };
         return;
       }
-      if (options.purpose === 'history-rag-summary' && !options.system.includes('上一版输出超长')) {
-        yield { type: 'text-delta', index: 0, text: '长'.repeat(6500) };
-        yield { type: 'finish', reason: { kind: 'stop' } };
-        return;
-      }
+      const input = options.purpose === 'history-rag-summary' ? JSON.parse(options.messages[0].content[0].text) : null;
+      const response = input ? JSON.stringify({ operations: [{ op: 'add', text: '用户偏好中文。', sources: [input.additions[0].id] }] }) : '回复';
       yield { type: 'reasoning-delta', index: 0, text: '此内容不得进入摘要' };
-      yield { type: 'text-delta', index: 1, text: '用户偏好中文。' };
-      yield { type: 'block-end', index: 1, block: { type: 'text', text: '用户偏好中文。' } };
+      yield { type: 'text-delta', index: 1, text: response };
+      yield { type: 'block-end', index: 1, block: { type: 'text', text: response } };
+      yield { type: 'usage', usage: { inputTokens: 120, outputTokens: 40, reasoningTokens: 10, cacheReadTokens: 20 } };
       yield { type: 'finish', reason: { kind: 'stop' } };
     }
   }
@@ -60,12 +58,12 @@ test('Installed DSH LLM and Connection generate, edit and inject a durable summa
   await rpc('memory-update');
   await until(async () => (await rpc('memory')).value?.text === '用户偏好中文。');
   assert.equal(calls[0].model, 'native-summary'); assert.equal(calls[0].purpose, 'history-rag-summary');
-  assert.deepEqual(calls.map(({ maxTokens, reasoningEffort }) => [maxTokens, reasoningEffort]), [[32768, 'high'], [32768, 'high']]);
+  assert.deepEqual(calls.map(({ maxTokens, reasoningEffort }) => [maxTokens, reasoningEffort]), [[32768, 'high']]);
   assert.equal(calls[0].toolHistory, undefined);
   assert.equal(calls[0].messages.length, 1); assert.equal(calls[0].messages[0].role, 'user');
-  assert.match(calls[0].system, /4500 字符以内.*硬上限 6000/);
-  assert.match(calls[1].system, /上一版输出超长.*3300 字符以内/);
-  assert.equal(calls[1].messages[0].content[0].text, calls[0].messages[0].content[0].text);
+  assert.match(calls[0].system, /4500 字符为目标.*上限 6000/);
+  assert.match(calls[0].system, /局部变更/);
+  assert.equal((await rpc('status')).value.memory.usage.today.inputTokens, 120);
   const models = (await rpc('memory-models')).value;
   assert.equal(models.providers[0].id, 'synthetic');
   assert.ok(models.providers[0].models.some(m => m.id === 'picked-summary'));
@@ -83,6 +81,8 @@ test('Installed DSH LLM and Connection generate, edit and inject a durable summa
   assert.deepEqual((await db.call('readMemory')).modelSelection, { provider: 'synthetic', model: 'picked-summary' });
   assert.equal((await rpc('memory-save', { text: '旧窗口', autoUpdate: true, expectedRevision: before.revision })).error.code, 'MEMORY_CONFLICT');
   assert.equal((await rpc('memory', {}, { principal: { kind: 'guest' } })).status, 403);
+  assert.equal((await rpc('memory-history', {}, { principal: { kind: 'guest' } })).status, 403);
+  assert.equal((await rpc('memory-restore', { expectedRevision: 1, revision: 0 }, { principal: { kind: 'guest' } })).status, 403);
   const chat = ctx.sessions.create('summary-new-chat', { meta: { cwd: process.cwd() } });
   const input = createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: '你好' }] });
   const signal = new AbortController().signal;
