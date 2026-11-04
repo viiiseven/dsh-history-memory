@@ -59,10 +59,58 @@ test('Empty, oversized and timed-out generations preserve the saved summary and 
     runtime.memory.setGenerator(generator(async () => result === null ? new Promise(() => {}) : result));
     runtime.memory.requestUpdate(); await until(() => !runtime.memory.running);
     assert.equal((await runtime.memory.read()).text, '保留的旧摘要');
-    assert.equal((await runtime.memory.status()).pending, 2); assert.ok(runtime.memory.retryAt > Date.now());
+    assert.equal((await runtime.memory.status()).pending, 2);
+    if (result?.length > 256) {
+      assert.equal(runtime.memory.lastError.code, 'SUMMARY_TOO_LONG');
+      assert.equal(runtime.memory.retryAt, 0);
+    } else {
+      assert.ok(runtime.memory.retryAt > Date.now());
+    }
     const error = runtime.memory.lastError; await runtime.memory.kick(); assert.equal(runtime.memory.lastError, error);
     await runtime.close();
   }
+});
+
+test('An oversized result is rewritten and the remaining backlog continues from the committed compact summary', async t => {
+  const { runtime, sessions } = await setup(t);
+  sessions.set('a', snapshot('a', Array.from({ length: 10 }, (_, i) => `原文片段 ${i}`)));
+  runtime.markDirty('a');
+  await until(() => !runtime.pumpRunning);
+  await runtime.memory.save({ text: '旧'.repeat(5900), autoUpdate: true, expectedRevision: 0 });
+  const calls = [];
+  runtime.memory.setGenerator(generator(async input => {
+    calls.push(input);
+    if (calls.length === 1) return '长'.repeat(6001);
+    return input.compact ? '首批精简摘要' : '第二批已整理';
+  }));
+  await runtime.memory.kick();
+  assert.deepEqual(calls.map(input => [input.chunks.length, input.targetChars]), [[8, 4500], [8, 3300], [2, 4500]]);
+  assert.deepEqual(calls[1].chunks, calls[0].chunks);
+  assert.equal(calls[1].previous.text.length, 5900);
+  assert.equal(calls[2].previous.text, '首批精简摘要');
+  const status = await runtime.memory.status();
+  assert.equal(status.pending, 0);
+  assert.equal(status.lastError, null);
+});
+
+test('Repeated oversized output is blocked after restart and consumes no automatic retry requests', async t => {
+  const { runtime, config, source } = await setup(t);
+  let calls = 0;
+  const fake = generator(async () => { calls++; return '长'.repeat(6001); });
+  runtime.memory.setGenerator(fake);
+  await runtime.memory.kick();
+  assert.equal(calls, 2);
+  await runtime.close();
+  const reopened = track(t, new HistoryRag(config, source));
+  await reopened.start();
+  await until(() => !reopened.pumpRunning && !reopened.scanRunning);
+  reopened.memory.setGenerator(fake);
+  await reopened.memory.kick();
+  assert.equal(calls, 2);
+  const status = await reopened.memory.status();
+  assert.equal(status.pending, 2);
+  assert.equal(status.lastError.code, 'SUMMARY_TOO_LONG');
+  assert.equal(status.retryAt, 0);
 });
 
 test('Only the opening user turn receives a summary, even if later context has been compressed', async t => {

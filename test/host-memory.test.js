@@ -31,6 +31,11 @@ test('Installed DSH LLM and Connection generate, edit and inject a durable summa
         yield { type: 'finish', reason: { kind: 'max-tokens' } };
         return;
       }
+      if (options.purpose === 'history-rag-summary' && !options.system.includes('上一版输出超长')) {
+        yield { type: 'text-delta', index: 0, text: '长'.repeat(6500) };
+        yield { type: 'finish', reason: { kind: 'stop' } };
+        return;
+      }
       yield { type: 'reasoning-delta', index: 0, text: '此内容不得进入摘要' };
       yield { type: 'text-delta', index: 1, text: '用户偏好中文。' };
       yield { type: 'block-end', index: 1, block: { type: 'text', text: '用户偏好中文。' } };
@@ -55,10 +60,12 @@ test('Installed DSH LLM and Connection generate, edit and inject a durable summa
   await rpc('memory-update');
   await until(async () => (await rpc('memory')).value?.text === '用户偏好中文。');
   assert.equal(calls[0].model, 'native-summary'); assert.equal(calls[0].purpose, 'history-rag-summary');
-  assert.deepEqual(calls.map(({ maxTokens, reasoningEffort }) => [maxTokens, reasoningEffort]), [[32768, 'high']]);
+  assert.deepEqual(calls.map(({ maxTokens, reasoningEffort }) => [maxTokens, reasoningEffort]), [[32768, 'high'], [32768, 'high']]);
   assert.equal(calls[0].toolHistory, undefined);
   assert.equal(calls[0].messages.length, 1); assert.equal(calls[0].messages[0].role, 'user');
-  assert.ok(calls[0].system.includes('摘要正文最多'));
+  assert.match(calls[0].system, /4500 字符以内.*硬上限 6000/);
+  assert.match(calls[1].system, /上一版输出超长.*3300 字符以内/);
+  assert.equal(calls[1].messages[0].content[0].text, calls[0].messages[0].content[0].text);
   const models = (await rpc('memory-models')).value;
   assert.equal(models.providers[0].id, 'synthetic');
   assert.ok(models.providers[0].models.some(m => m.id === 'picked-summary'));
