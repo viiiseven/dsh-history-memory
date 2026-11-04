@@ -4,6 +4,11 @@
 
 **全部历史文字对话 → 原文切块 → Embedding → SQLite → 每个新用户输入前自动向量检索 → 注入命中原文。**
 
+## 0.7.5：提高摘要输出预算并停止重复截断
+
+- 每批直接使用 `memoryMaxTokens`（默认 32,768）作为输出预算。
+- 达到输出上限时保留旧摘要和待处理片段，并持久记录该批次的指纹。后台跳过同一模型、输入和预算的重复请求，重启后也生效。修改输入、模型或预算后可继续处理，点击「立即更新摘要」也可显式重试。
+
 ## 0.7.4：连续处理积压摘要
 
 - 同一轮内串行整理积压片段。每批保存成功后立即开始下一批，直至队列清空。遇到失败时保留已保存进度，自动更新按退避时间重试。
@@ -156,7 +161,7 @@ Key 输入框默认隐藏；已有 Key 不会从服务端返回界面。留空�
 
 ## 安装
 
-使用 DSH 插件管理器安装项目目录或 `dsh-history-rag-0.7.4.tgz`，启用后完全退出并重新打开 DSH。以桌面版 profile 为例：
+使用 DSH 插件管理器安装项目目录或 `dsh-history-rag-0.7.5.tgz`，启用后完全退出并重新打开 DSH。以桌面版 profile 为例：
 
 ```powershell
 dsh plugin --profile desktop add "安装包或本项目的绝对路径"
@@ -196,7 +201,7 @@ dsh plugin --profile desktop add "安装包或本项目的绝对路径"
 
    ```powershell
    dsh plugin --profile desktop add "本项目的绝对路径"
-   # 也可以将参数替换为 dsh-history-rag-0.7.4.tgz 的绝对路径
+   # 也可以将参数替换为 dsh-history-rag-0.7.5.tgz 的绝对路径
    ```
 
    完全退出并重新打开 DSH。若命令行中没有 `dsh`，可在 DSH 插件管理的添加入口使用本地安装来源；桌面 GUI 安装流程尚未实机验收。
@@ -246,7 +251,7 @@ history-rag/
 | `queryMaxChars` | 4000 | 查询输入过长时，只向 Embedding 发送开头这些字符 |
 | `includeToolResults` | false | 额外索引工具返回里的文字块 |
 | `humanSourceKinds` | `user`, `prompt` | 真实用户消息的来源标识；其他聊天桥接可按其真实来源增加 |
-| `memoryMaxChars` / `memoryMaxTokens` | 6000 / 16000 | 摘要正文字符上限 / 输出 token 上限。首次请求最多 8192 token，截断后最多增加到配置上限 |
+| `memoryMaxChars` / `memoryMaxTokens` | 6000 / 32768 | 摘要正文字符上限 / 每批输出 token 上限 |
 | `memoryInputChars` | 16000 | 每批最多 8 个片段，合计新增原文字符数上限。旧摘要及请求提示词另计 |
 | `memoryDebounceMs` / `memoryIntervalMs` | 30000 / 60000 | 对话变更后的等待时间 / 两轮自动更新之间的最短间隔 |
 | `memoryTimeoutMs` | 120000 | 单批摘要生成等待上限 |

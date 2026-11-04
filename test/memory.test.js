@@ -128,22 +128,6 @@ test('Failed summary exposes a bounded diagnostic while preserving original pend
   assert.ok(!JSON.stringify(status).includes('private'));
 });
 
-test('A truncated summary retries the same batch with a larger output budget', async t => {
-  const { runtime } = await setup(t);
-  const calls = [];
-  runtime.memory.setGenerator(generator(async input => {
-    calls.push(input);
-    if (calls.length === 1) throw Object.assign(new Error('truncated'), { code: 'SUMMARY_TRUNCATED' });
-    return '更简洁的完整摘要';
-  }));
-  await runtime.memory.kick();
-  assert.deepEqual(calls.map(({ maxTokens }) => maxTokens), [8192, 16000]);
-  assert.deepEqual(calls[1].chunks, calls[0].chunks);
-  assert.equal(calls[1].maxChars, calls[0].maxChars);
-  assert.equal((await runtime.memory.read()).text, '更简洁的完整摘要');
-  assert.equal((await runtime.memory.status()).pending, 0);
-});
-
 test('One manual update drains 2,000 sessions in bounded batches without waiting between commits', async t => {
   const { runtime, sessions } = await setup(t, { memoryIntervalMs: 60000 });
   for (let i = 1; i < 2000; i++) sessions.set(`chat-${i}`, snapshot(`chat-${i}`, [`历史会话 ${i}`]));
@@ -199,20 +183,38 @@ test('A failed later batch keeps earlier commits and stops the drain until retry
   assert.equal(runtime.memory.lastError.code, 'RATE_LIMITED');
 });
 
-test('When both attempts truncate, the saved summary and pending fragments survive the retry cooldown', async t => {
-  const { runtime } = await setup(t);
+test('A truncated batch stays blocked after restart until an explicit retry or a changed budget', async t => {
+  const { runtime, config, source } = await setup(t);
   await runtime.memory.save({ text: '已保存的摘要', autoUpdate: true, expectedRevision: 0 });
-  let calls = 0;
-  runtime.memory.setGenerator(generator(async () => {
-    calls++;
-    throw Object.assign(new Error('truncated'), { code: 'SUMMARY_TRUNCATED' });
-  }));
+  const budgets = [];
+  const fake = generator(async ({ maxTokens }) => {
+    budgets.push(maxTokens);
+    if (maxTokens === 32768) throw Object.assign(new Error('truncated'), { code: 'SUMMARY_TRUNCATED' });
+    return '新预算完成的摘要';
+  });
+  runtime.memory.setGenerator(fake);
   await runtime.memory.kick();
-  await runtime.memory.kick();
-  assert.equal(calls, 2);
+  assert.deepEqual(budgets, [32768]);
   assert.equal((await runtime.memory.read()).text, '已保存的摘要');
-  const status = await runtime.memory.status();
-  assert.equal(status.pending, 2);
-  assert.equal(status.lastError.code, 'SUMMARY_TRUNCATED');
-  assert.ok(status.retryAt >= status.lastError.time + 300000);
+  await runtime.close();
+  const reopened = track(t, new HistoryRag(config, source));
+  await reopened.start();
+  await until(() => !reopened.pumpRunning && !reopened.scanRunning);
+  reopened.memory.setGenerator(fake);
+  await reopened.memory.kick();
+  assert.deepEqual(budgets, [32768]);
+  const blocked = await reopened.memory.status();
+  assert.equal(blocked.pending, 2);
+  assert.equal(blocked.lastError.code, 'SUMMARY_TRUNCATED');
+  assert.equal(blocked.lastError.maxTokens, 32768);
+  assert.equal(blocked.retryAt, 0);
+  reopened.memory.requestUpdate();
+  await until(() => !reopened.memory.running);
+  assert.deepEqual(budgets, [32768, 32768]);
+  reopened.reconfigure({ ...config, memoryMaxTokens: 48000 });
+  reopened.memory.lastRunAt = 0;
+  await reopened.memory.kick();
+  assert.deepEqual(budgets, [32768, 32768, 48000]);
+  assert.equal((await reopened.memory.status()).pending, 0);
+  assert.equal((await reopened.memory.read()).text, '新预算完成的摘要');
 });

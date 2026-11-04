@@ -18,7 +18,7 @@
   "maxContextChars": 6000,
   "memoryMaxChars": 6000,
   "memoryInputChars": 16000,
-  "memoryMaxTokens": 16000,
+  "memoryMaxTokens": 32768,
   "memoryDebounceMs": 30000,
   "memoryIntervalMs": 60000,
   "memoryTimeoutMs": 120000,

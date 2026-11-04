@@ -148,7 +148,7 @@ body[data-ds-dark-theme] .hrag{color-scheme:dark;color:var(--dsw-alias-label-pri
       const memoryState = status?.memory;
       const memoryFailure = memoryState?.lastError;
       const memoryFailureText = memoryFailure ? ({
-        SUMMARY_TRUNCATED: '模型达到摘要输出预算上限。原摘要和待处理片段已保留。',
+        SUMMARY_TRUNCATED: `模型达到摘要输出上限${memoryFailure.maxTokens ? `（${number(memoryFailure.maxTokens)} token）` : ''}。此批已停止自动重试，原摘要和待处理片段已保留。`,
         SUMMARY_INPUT_TOO_LARGE: '原文片段超过单批输入上限，待处理片段已保留。',
         SUMMARY_TOO_LONG: '模型返回的摘要超过字符上限，已保留原摘要。', SUMMARY_EMPTY: '模型未返回摘要正文，已保留原摘要。',
         ABORTED: '摘要请求已取消或超时。', TIMEOUT: '摘要模型响应超时。', TRANSPORT: '摘要模型连接失败，请检查 DSH 中该模型的连接。',
@@ -157,6 +157,7 @@ body[data-ds-dark-theme] .hrag{color-scheme:dark;color:var(--dsw-alias-label-pri
         UNEXPECTED_ERROR: 'DSH 模型适配器处理失败，请检查插件与 DSH 版本。',
       }[memoryFailure.code] || '摘要模型调用失败，请检查 DSH 中所选模型的配置。') : '';
       const memoryStateText = memoryState?.running ? '正在后台更新摘要…'
+        : memoryFailure?.code === 'SUMMARY_TRUNCATED' ? '摘要队列已暂停，可调整预算或手动重试。'
         : memoryState?.autoUpdate === false ? '自动更新已暂停，已保存的摘要仍会带入新会话。'
         : memoryState?.retryAt > Date.now() ? '上次摘要更新未完成，稍后会自动重试；已保存的摘要仍可使用。'
         : memoryState?.pending && !memoryState.modelReady ? '等待 DSH 默认聊天模型；你也可以先手动填写摘要。'
