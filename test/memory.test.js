@@ -128,7 +128,7 @@ test('Failed summary exposes a bounded diagnostic while preserving original pend
   assert.ok(!JSON.stringify(status).includes('private'));
 });
 
-test('A truncated summary retries with a shorter target and marks only the successful subset as processed', async t => {
+test('A truncated summary retries the same batch with a larger output budget', async t => {
   const { runtime } = await setup(t);
   const calls = [];
   runtime.memory.setGenerator(generator(async input => {
@@ -137,10 +137,39 @@ test('A truncated summary retries with a shorter target and marks only the succe
     return '更简洁的完整摘要';
   }));
   await runtime.memory.kick();
-  assert.deepEqual(calls.map(({ chunks }) => chunks.length), [2, 1]);
-  assert.ok(calls[1].maxChars < calls[0].maxChars);
+  assert.deepEqual(calls.map(({ maxTokens }) => maxTokens), [8192, 16000]);
+  assert.deepEqual(calls[1].chunks, calls[0].chunks);
+  assert.equal(calls[1].maxChars, calls[0].maxChars);
   assert.equal((await runtime.memory.read()).text, '更简洁的完整摘要');
-  assert.equal((await runtime.memory.status()).pending, 1);
+  assert.equal((await runtime.memory.status()).pending, 0);
+});
+
+test('A manual update processes one bounded batch from 2,000 sessions and respects the next automatic interval', async t => {
+  const { runtime, sessions } = await setup(t, { memoryIntervalMs: 60000 });
+  for (let i = 1; i < 2000; i++) sessions.set(`chat-${i}`, snapshot(`chat-${i}`, [`历史会话 ${i}`]));
+  await runtime.scan();
+  await until(async () => !runtime.pumpRunning && (await runtime.memory.status()).pending === 2001, 15000);
+  const batches = [];
+  runtime.memory.setGenerator(generator(async ({ chunks }) => { batches.push(chunks.length); return '已整理首批'; }));
+  runtime.memory.requestUpdate();
+  await until(() => !runtime.memory.running);
+  await runtime.memory.kick();
+  assert.deepEqual(batches, [8]);
+  assert.equal((await runtime.memory.status()).pending, 1993);
+});
+
+test('Batching respects the text budget and leaves a long fragment intact for the next batch', async t => {
+  const { runtime, sessions } = await setup(t, { chunkChars: 16000 });
+  sessions.set('a', snapshot('a', ['甲'.repeat(9000), '乙'.repeat(9000)]));
+  runtime.markDirty('a');
+  await until(() => !runtime.pumpRunning);
+  const batches = [];
+  runtime.memory.setGenerator(generator(async ({ chunks }) => { batches.push(chunks.map(c => c.text)); return '摘要'; }));
+  await runtime.memory.kick();
+  runtime.memory.requestUpdate();
+  await until(() => !runtime.memory.running);
+  assert.deepEqual(batches, [['甲'.repeat(9000)], ['乙'.repeat(9000)]]);
+  assert.equal((await runtime.memory.status()).pending, 0);
 });
 
 test('When both attempts truncate, the saved summary and pending fragments survive the retry cooldown', async t => {

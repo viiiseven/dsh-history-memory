@@ -141,14 +141,15 @@ body[data-ds-dark-theme] .hrag{color-scheme:dark;color:var(--dsw-alias-label-pri
           const currentStatus = await invoke('status');
           if (!mounted.current) return;
           setStatus(currentStatus);
-          setMemoryFeedback({ error: false, text: action === 'memory-save' ? '摘要已保存，新会话会自动带入。' : '已请求后台更新，可继续聊天，进度会自动刷新。' });
+          setMemoryFeedback({ error: false, text: action === 'memory-save' ? '摘要已保存，新会话会自动带入。' : '已请求处理下一批摘要，可继续聊天，进度会自动刷新。' });
         } catch (error) { if (mounted.current) setMemoryFeedback({ error: true, text: error.message || '摘要操作失败，草稿已保留' }); }
         finally { if (mounted.current) setMemoryBusy(''); }
       };
       const memoryState = status?.memory;
       const memoryFailure = memoryState?.lastError;
       const memoryFailureText = memoryFailure ? ({
-        SUMMARY_TRUNCATED: '缩小批次并缩短摘要目标后，模型仍达到输出上限。已保留原摘要，5 分钟后自动重试。',
+        SUMMARY_TRUNCATED: '模型达到摘要输出预算上限。原摘要和待处理片段已保留。',
+        SUMMARY_INPUT_TOO_LARGE: '原文片段超过单批输入上限，待处理片段已保留。',
         SUMMARY_TOO_LONG: '模型返回的摘要超过字符上限，已保留原摘要。', SUMMARY_EMPTY: '模型未返回摘要正文，已保留原摘要。',
         ABORTED: '摘要请求已取消或超时。', TIMEOUT: '摘要模型响应超时。', TRANSPORT: '摘要模型连接失败，请检查 DSH 中该模型的连接。',
         NO_ADAPTER: '摘要模型的服务商尚未启用，请在 DSH 中检查模型配置。',
@@ -156,8 +157,8 @@ body[data-ds-dark-theme] .hrag{color-scheme:dark;color:var(--dsw-alias-label-pri
         UNEXPECTED_ERROR: 'DSH 模型适配器处理失败，请检查插件与 DSH 版本。',
       }[memoryFailure.code] || '摘要模型调用失败，请检查 DSH 中所选模型的配置。') : '';
       const memoryStateText = memoryState?.running ? '正在后台更新摘要…'
-        : memoryState?.retryAt > Date.now() ? '上次摘要更新未完成，稍后会自动重试；已保存的摘要仍可使用。'
         : memoryState?.autoUpdate === false ? '自动更新已暂停，已保存的摘要仍会带入新会话。'
+        : memoryState?.retryAt > Date.now() ? '上次摘要更新未完成，稍后会自动重试；已保存的摘要仍可使用。'
         : memoryState?.pending && !memoryState.modelReady ? '等待 DSH 默认聊天模型；你也可以先手动填写摘要。'
         : memoryState?.pending ? `等待整理 ${number(memoryState.pending)} 个新增原文片段，后台会在对话稳定后更新。`
         : memoryState?.hasText ? '摘要已就绪，新会话会自动带入。' : '尚无摘要，可手动填写，或等待后台根据历史对话生成。';

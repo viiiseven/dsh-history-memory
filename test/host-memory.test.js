@@ -27,7 +27,7 @@ test('Installed DSH LLM and Connection generate, edit and inject a durable summa
     async listModels(provider) { return [{ provider, id: 'native-summary', name: '默认摘要模型' }, { provider, id: 'picked-summary', name: '指定摘要模型' }]; }
     async *stream(options) {
       calls.push(options);
-      if (options.reasoningEffort !== 'off') {
+      if (options.maxTokens < 16000) {
         yield { type: 'finish', reason: { kind: 'max-tokens' } };
         return;
       }
@@ -55,7 +55,7 @@ test('Installed DSH LLM and Connection generate, edit and inject a durable summa
   await rpc('memory-update');
   await until(async () => (await rpc('memory')).value?.text === '用户偏好中文。');
   assert.equal(calls[0].model, 'native-summary'); assert.equal(calls[0].purpose, 'history-rag-summary');
-  assert.equal(calls[0].reasoningEffort, 'off');
+  assert.deepEqual(calls.map(({ maxTokens, reasoningEffort }) => [maxTokens, reasoningEffort]), [[8192, 'high'], [16000, 'high']]);
   assert.equal(calls[0].toolHistory, undefined);
   assert.equal(calls[0].messages.length, 1); assert.equal(calls[0].messages[0].role, 'user');
   assert.ok(calls[0].system.includes('摘要正文最多'));
